@@ -107,7 +107,14 @@ def _run_suite():
             missing.append("GameMode.hud_class")
         return not missing, "missing %s" % missing
 
-    for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets)]:
+    def t_render_features_off():
+        # Hardware ray tracing (Lumen) hung the GPU on the 4060 Laptop: keep it and Substrate disabled.
+        on = [cv for cv in ["r.RayTracing", "r.Lumen.HardwareRayTracing", "r.Substrate"]
+              if unreal.SystemLibrary.get_console_variable_int_value(cv) != 0]
+        return not on, "enabled %s" % on
+
+    for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets),
+                     ("config.render_features_off", t_render_features_off)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
