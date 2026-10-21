@@ -5,10 +5,16 @@
 #include "Game/GregrGameState.h"
 #include "Game/GregrGameUserSettings.h"
 #include "Game/GregrPlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "UI/GregrHUD.h"
 
 const TCHAR* AGregrGameMode::PlayNowOption = TEXT("PlayNow");
+
+static TAutoConsoleVariable<bool> CVarSpawnMonsters(
+	TEXT("gregr.Monsters"),
+	true,
+	TEXT("Send the monster waves when a challenge starts (the tests turn it off and spawn their own)."));
 
 AGregrGameMode::AGregrGameMode()
 {
@@ -41,5 +47,26 @@ void AGregrGameMode::StartChallenge()
 	{
 		const UGregrGameUserSettings* Settings = UGregrGameUserSettings::GetGregrUserSettings();
 		Challenge->StartChallenge(Settings ? Settings->GetChallengeDuration() : 120.f);
+		Challenge->OnChallengeFinished.AddUniqueDynamic(this, &AGregrGameMode::HandleChallengeFinished);
+	}
+	if (CVarSpawnMonsters.GetValueOnGameThread())
+	{
+		StartMonsterWaves();
+	}
+}
+
+void AGregrGameMode::StartMonsterWaves()
+{
+	if (UMonsterSubsystem* Monsters = UWorld::GetSubsystem<UMonsterSubsystem>(GetWorld()))
+	{
+		Monsters->StartWaves(MonsterSpawn);
+	}
+}
+
+void AGregrGameMode::HandleChallengeFinished(int32 FinalScore)
+{
+	if (UMonsterSubsystem* Monsters = UWorld::GetSubsystem<UMonsterSubsystem>(GetWorld()))
+	{
+		Monsters->StopWaves();
 	}
 }

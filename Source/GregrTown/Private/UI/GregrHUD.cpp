@@ -124,6 +124,7 @@ void AGregrHUD::ShowEndScreen(int32 FinalScore)
 		EndScreenWidget->SetFinalScore(FinalScore);
 		const AGregrGameState* GameState = GetWorld()->GetGameState<AGregrGameState>();
 		EndScreenWidget->SetNewRecord(GameState && GameState->IsNewRecord());
+		EndScreenWidget->SetPlayerDied(GameState && GameState->GetEndReason() == EChallengeEndReason::PlayerDied);
 		if (!EndScreenWidget->IsInViewport())
 		{
 			EndScreenWidget->AddToViewport(10);

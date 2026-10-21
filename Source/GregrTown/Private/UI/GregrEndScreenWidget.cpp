@@ -15,7 +15,8 @@ void UGregrEndScreenWidget::BuildDefaultLayout()
 {
 	UVerticalBox* Content = MakeModalPanel(880.f);
 
-	AddRow(Content, MakeText(TEXT("Title"), LOCTEXT("Title", "Temps écoulé !"), 64), 24.f);
+	TitleText = MakeText(TEXT("TitleText"), LOCTEXT("TimeUp", "Temps écoulé !"), 64);
+	AddRow(Content, TitleText, 24.f);
 	FinalScoreText = MakeText(TEXT("FinalScoreText"), FText::GetEmpty(), 52);
 	AddRow(Content, FinalScoreText, 16.f);
 
@@ -70,6 +71,20 @@ void UGregrEndScreenWidget::SetNewRecord(bool bNewRecord)
 	{
 		NewRecordText->SetVisibility(bNewRecord ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
 	}
+}
+
+void UGregrEndScreenWidget::SetPlayerDied(bool bDied)
+{
+	if (TitleText)
+	{
+		TitleText->SetText(bDied ? LOCTEXT("Died", "Tu es mort !!") : LOCTEXT("TimeUp", "Temps écoulé !"));
+		TitleText->SetColorAndOpacity(FSlateColor(bDied ? FLinearColor(1.f, 0.25f, 0.15f) : FLinearColor::White));
+	}
+}
+
+FText UGregrEndScreenWidget::GetTitleDisplay() const
+{
+	return TitleText ? TitleText->GetText() : FText::GetEmpty();
 }
 
 bool UGregrEndScreenWidget::IsNewRecordShown() const

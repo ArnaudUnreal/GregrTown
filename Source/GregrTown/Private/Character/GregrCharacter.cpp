@@ -2,15 +2,22 @@
 
 #include "Character/GregrCharacter.h"
 
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 #include "Camera/CameraComponent.h"
 #include "Character/FallRecoveryComponent.h"
 #include "Combat/CombatComponent.h"
+#include "Combat/HealthComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Game/GregrGameState.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputActionValue.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
+#include "Perception/AISense_Sight.h"
+#include "TimerManager.h"
 
 AGregrCharacter::AGregrCharacter()
 {
@@ -44,6 +51,12 @@ AGregrCharacter::AGregrCharacter()
 
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
 	FallRecoveryComponent = CreateDefaultSubobject<UFallRecoveryComponent>(TEXT("FallRecovery"));
+
+	HealthComponent = CreateDefaultSubobject<UHealthComponent>(TEXT("Health"));
+	HealthComponent->MaxHealth = 100.f;
+	HealthComponent->InvulnerabilityTime = 0.5f;
+
+	StimuliSource = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
 }
 
 void AGregrCharacter::BeginPlay()
@@ -53,6 +66,41 @@ void AGregrCharacter::BeginPlay()
 	BaseFieldOfView = FollowCamera->FieldOfView;
 	BaseArmLength = CameraBoom->TargetArmLength;
 	SetRunning(false);
+
+	StimuliSource->RegisterForSense(UAISense_Sight::StaticClass());
+	HealthComponent->OnDied.AddUniqueDynamic(this, &AGregrCharacter::HandleDied);
+}
+
+void AGregrCharacter::HandleDied(AActor* Killer)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		DisableInput(PC);
+	}
+	SetRunning(false);
+	GetCharacterMovement()->StopMovementImmediately();
+	// Monsters stop seeing (and hitting) a dead player.
+	StimuliSource->UnregisterFromPerceptionSystem();
+
+	float Length = 0.f;
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (UAnimMontage* Montage = DeathAnim && AnimInstance ? UAnimMontage::CreateSlotAnimationAsDynamicMontage(DeathAnim, TEXT("DefaultSlot"), 0.15f, 0.f) : nullptr)
+	{
+		// Stays on the ground on the last frame.
+		Montage->bEnableAutoBlendOut = false;
+		Length = AnimInstance->Montage_Play(Montage);
+	}
+
+	FTimerHandle Handle;
+	GetWorldTimerManager().SetTimer(Handle, this, &AGregrCharacter::FinishDying, FMath::Max(Length, 0.1f), false);
+}
+
+void AGregrCharacter::FinishDying()
+{
+	if (AGregrGameState* GameState = GetWorld()->GetGameState<AGregrGameState>())
+	{
+		GameState->FinishChallenge(EChallengeEndReason::PlayerDied);
+	}
 }
 
 void AGregrCharacter::Tick(float DeltaSeconds)

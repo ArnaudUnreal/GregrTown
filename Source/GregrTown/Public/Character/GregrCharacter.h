@@ -6,15 +6,18 @@
 #include "GameFramework/Character.h"
 #include "GregrCharacter.generated.h"
 
+class UAIPerceptionStimuliSourceComponent;
+class UAnimSequenceBase;
 class UCameraComponent;
 class UCombatComponent;
 class UFallRecoveryComponent;
+class UHealthComponent;
 class UInputAction;
 class UInputMappingContext;
 class USpringArmComponent;
 struct FInputActionValue;
 
-/** Third person player character: camera, Enhanced Input and a combat component. */
+/** Third person player character: camera, Enhanced Input, combat and health. Seen by the monsters. */
 UCLASS(Blueprintable)
 class GREGRTOWN_API AGregrCharacter : public ACharacter
 {
@@ -28,6 +31,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Movement")
 	UFallRecoveryComponent* GetFallRecoveryComponent() const { return FallRecoveryComponent; }
+
+	UFUNCTION(BlueprintPure, Category = "Health")
+	UHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
+	/** Played when the health reaches 0; the challenge ends when it is over. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Health")
+	TObjectPtr<UAnimSequenceBase> DeathAnim;
 
 	/** Switches between walk and run speeds and jump velocities. */
 	UFUNCTION(BlueprintCallable, Category = "Movement")
@@ -72,6 +82,11 @@ protected:
 	/** FOV and boom length for a run effect amount in [0, 1]. */
 	void UpdateRunCamera(float Alpha);
 
+	UFUNCTION()
+	void HandleDied(AActor* Killer);
+
+	void FinishDying();
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
@@ -83,6 +98,13 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
 	TObjectPtr<UFallRecoveryComponent> FallRecoveryComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Health")
+	TObjectPtr<UHealthComponent> HealthComponent;
+
+	/** Makes the player visible to the monsters' sight. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+	TObjectPtr<UAIPerceptionStimuliSourceComponent> StimuliSource;
 
 	/** Added to the local player when possessed. */
 	UPROPERTY(EditDefaultsOnly, Category = "Input")

@@ -9,7 +9,7 @@
 class UButton;
 class UTextBlock;
 
-/** Shown when the countdown ends: final score, replay, settings, quit. */
+/** Shown when the challenge ends (time up or player dead): final score, replay, settings, quit. */
 UCLASS()
 class GREGRTOWN_API UGregrEndScreenWidget : public UGregrUserWidget
 {
@@ -24,6 +24,13 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "End Screen")
 	void SetNewRecord(bool bNewRecord);
+
+	/** "Time up" or "You died" title. */
+	UFUNCTION(BlueprintCallable, Category = "End Screen")
+	void SetPlayerDied(bool bDied);
+
+	UFUNCTION(BlueprintPure, Category = "End Screen")
+	FText GetTitleDisplay() const;
 
 	UFUNCTION(BlueprintPure, Category = "End Screen")
 	bool IsNewRecordShown() const;
@@ -56,6 +63,9 @@ protected:
 
 	UFUNCTION()
 	void HandleQuitClicked();
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> TitleText;
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> FinalScoreText;

@@ -199,6 +199,55 @@ def _run_suite():
                   and m.get_editor_property("body_setup").get_editor_property("collision_trace_flag") == unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE]
         return not missing and not coarse, "%d meshes, without Nanite %s, coarse collision %s" % (len(meshes), missing[:10], coarse[:10])
 
+    MONSTERS = "/Game/GregrTown/Characters/Monsters/"
+
+    def t_monster_abps():
+        out = []
+        for m in ("Small", "Big"):
+            abp = unreal.load_asset(MONSTERS + "%s/ABP_%sMonster" % (m, m))
+            unreal.BlueprintEditorLibrary.compile_blueprint(abp)
+            idles = {unreal.load_asset(MONSTERS + "%s/BS_%sMonster_Locomotion_%s" % (m, m, s)).get_editor_property("sample_data")[0]
+                     .get_editor_property("animation").get_name() for s in "AB"}
+            out.append((m, abp.get_editor_property("status") == unreal.BlueprintStatus.BS_UP_TO_DATE, len(idles)))
+        return all(ok and n == 2 for _, ok, n in out), str(out)
+
+    def t_monster_setup():
+        # Numbers of the design doc (Claude/pnj.txt) and the scales asked for (small 1.4, big 2.1).
+        want = {"Small": dict(scale=1.4, health=45, attack_damage=5, damage_per_impact=15, walk_speed=500, run_speed=800, kill_points=20),
+                "Big": dict(scale=2.1, health=90, attack_damage=10, damage_per_impact=10, walk_speed=250, run_speed=400, kill_points=50)}
+        bad = []
+        for m, w in want.items():
+            cdo = unreal.get_default_object(unreal.load_asset(MONSTERS + "%s/BP_%sMonster" % (m, m)).generated_class())
+            got = dict(scale=cdo.get_editor_property("mesh").get_editor_property("relative_scale3d").z,
+                       health=cdo.get_editor_property("health_component").get_editor_property("max_health"),
+                       **{k: cdo.get_editor_property(k) for k in ("attack_damage", "damage_per_impact", "walk_speed", "run_speed", "kill_points")})
+            bad += ["%s.%s=%s" % (m, k, got[k]) for k in w if abs(got[k] - w[k]) > 1e-3]
+            bad += ["%s.%s missing" % (m, k) for k in ("attack_anim", "hit_react_anim", "death_anim", "hit_sound", "hit_effect") if not cdo.get_editor_property(k)]
+        gm = unreal.get_default_object(unreal.load_asset("/Game/GregrTown/Core/BP_GregrGameMode").generated_class()).get_editor_property("monster_spawn")
+        if not gm.get_editor_property("small_monster_class") or not gm.get_editor_property("big_monster_class"):
+            bad.append("game mode classes")
+        return not bad, ", ".join(bad)
+
+    def t_sight_only_player():
+        return not unreal.get_default_object(unreal.AISense_Sight).get_editor_property("auto_register_all_pawns_as_sources"), ""
+
+    def t_navmesh_setup():
+        eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+        acts = eas.get_all_level_actors()
+        # One navmesh per monster size, big enough for its capsule.
+        navs = sorted((a.get_editor_property("agent_radius"), a.get_editor_property("agent_height")) for a in acts if a.get_class().get_name() == "RecastNavMesh")
+        links = [a for a in acts if a.get_actor_label() == "NavLink_WaterStairs"]
+        need = []
+        for m in ("Small", "Big"):
+            cap = unreal.get_default_object(unreal.load_asset(MONSTERS + "%s/BP_%sMonster" % (m, m)).generated_class()).get_editor_property("capsule_component")
+            need.append((cap.get_editor_property("capsule_radius"), 2 * cap.get_editor_property("capsule_half_height")))
+        fits = len(navs) == 2 and all(navs[i][0] >= need[i][0] and navs[i][1] >= need[i][1] for i in range(2))
+        return fits and bool(links), "navmeshes %s for capsules %s, stairs link %s" % (navs, need, bool(links))
+
+    for name, fn in [("asset.monster_abps", t_monster_abps), ("asset.monster_setup", t_monster_setup),
+                     ("config.sight_only_player", t_sight_only_player), ("level.navmesh_setup", t_navmesh_setup)]:
+        check(name, fn)
+
     for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets),
                      ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
                      ("asset.level_meshes_nanite", t_level_meshes_nanite), ("asset.gc_nanite", t_gc_nanite),
@@ -225,6 +274,9 @@ def _run_suite():
     user_settings.set_challenge_duration(600)  # long enough to never end during the suite
     user_settings.save_settings()
 
+    # The legacy checks run without the monster population (it would hit the player and get in the way):
+    # the monster tests spawn their own.
+    unreal.SystemLibrary.execute_console_command(None, "gregr.Monsters 0")
     les.editor_request_begin_play()
 
     ctx = {}
@@ -238,6 +290,200 @@ def _run_suite():
         t = 0.0
         while t < seconds:
             t += (yield)
+
+    def monster_tests(gw, pawn, pc, hud_widget, hud_score, hit):
+        subsystems = [s for s in unreal.ObjectIterator(unreal.MonsterSubsystem) if s.get_world() == gw]
+        if not subsystems:
+            record("monsters.subsystem", False, "no MonsterSubsystem in the game world")
+            return
+        monsters = subsystems[0]
+        game_mode = unreal.GameplayStatics.get_game_mode(gw)
+        settings = game_mode.get_editor_property("monster_spawn")
+        small_class = settings.get_editor_property("small_monster_class")
+        big_class = settings.get_editor_property("big_monster_class")
+        health = pawn.get_health_component()
+        record("monsters.none_when_disabled", len(monsters.get_monsters()) == 0, "%d monsters with gregr.Monsters 0" % len(monsters.get_monsters()))
+
+        # Waves: 10, 20, ... 100 small monsters (then 100 again), 1 big for 4 small.
+        wave_settings = unreal.get_default_object(unreal.MonsterWaveSettings)
+        sizes = [wave_settings.get_wave_size(n) for n in (1, 2, 10, 11, 30)]
+        record("monsters.wave_sizes", sizes == [(10, 3), (20, 5), (100, 25), (100, 25), (100, 25)], str(sizes))
+
+        # The cycle: first wave after its delay, away from the player, out of the water; the countdown to the
+        # next wave starts when its last monster dies. Short delays for the test (restored after).
+        saved_delays = (wave_settings.get_editor_property("first_wave_delay"), wave_settings.get_editor_property("delay_between_waves"))
+        wave_settings.set_editor_property("first_wave_delay", 0.5)
+        wave_settings.set_editor_property("delay_between_waves", 2.0)
+        game_mode.start_monster_waves()
+        t = 0.0
+        while t < 5.0 and (monsters.get_current_wave() < 1 or monsters.is_spawning_wave()):
+            t += (yield)
+        yield from wait(0.2)
+        here = pawn.get_actor_location()
+        mons = monsters.get_monsters()
+        small = monsters.get_monster_count(unreal.MonsterKind.SMALL)
+        big = monsters.get_monster_count(unreal.MonsterKind.BIG)
+        too_close = [m for m in mons if ((m.get_actor_location() - here) * unreal.Vector(1, 1, 0)).length() < 1000 - 200]
+        in_water = [m for m in mons if m.get_actor_location().z < settings.get_editor_property("water_level")]
+        wave_text = str(hud_widget.get_wave_display())
+        record("monsters.wave_1", monsters.get_current_wave() == 1 and small == 10 and big == 3 and not too_close and not in_water
+               and wave_text == "Vague 1 : 13 monstres",
+               "wave %d: %d small, %d big, %d in houses, %d too close, %d under water, HUD '%s'"
+               % (monsters.get_current_wave(), small, big, monsters.get_house_spawn_count(), len(too_close), len(in_water), wave_text))
+        for m in mons:
+            m.get_health_component().set_health(0)
+        yield from wait(0.3)
+        countdown = monsters.is_waiting_for_next_wave()
+        countdown_text = str(hud_widget.get_wave_display())
+        t = 0.0
+        while t < 6.0 and (monsters.get_current_wave() < 2 or monsters.is_spawning_wave()):
+            t += (yield)
+        record("monsters.next_wave_after_delay",
+               countdown and countdown_text.startswith("Vague 2 dans") and monsters.get_current_wave() == 2
+               and monsters.get_monster_count(unreal.MonsterKind.SMALL) == 20 and 1.5 <= t + 0.3 <= 3.5,
+               "countdown %s '%s', wave %d with %d small after %.1fs"
+               % (countdown, countdown_text, monsters.get_current_wave(), monsters.get_monster_count(unreal.MonsterKind.SMALL), t + 0.3))
+        monsters.stop_waves()
+        wave_settings.set_editor_property("first_wave_delay", saved_delays[0])
+        wave_settings.set_editor_property("delay_between_waves", saved_delays[1])
+        monsters.destroy_all_monsters()
+        yield from wait(0.5)
+        record("monsters.no_wave_when_stopped", not monsters.is_waiting_for_next_wave() and monsters.get_alive_monster_count() == 0, "")
+
+        def ground(x, y, z):
+            hits = unreal.SystemLibrary.line_trace_single(gw, unreal.Vector(x, y, z + 500), unreal.Vector(x, y, z - 2000),
+                                                          unreal.TraceTypeQuery.ECC_VISIBILITY, False, [pawn], unreal.DrawDebugTrace.NONE, True)
+            return hits.to_tuple()[4] if hits and hits.to_tuple()[0] else unreal.Vector(x, y, z)
+
+        def spawn_at(cls, distance, facing_player=True, side=0.0):
+            here = pawn.get_actor_location()
+            fwd, right = pawn.get_actor_forward_vector(), pawn.get_actor_right_vector()
+            spot = ground(here.x + fwd.x * distance + right.x * side, here.y + fwd.y * distance + right.y * side, here.z)
+            yaw = unreal.MathLibrary.find_look_at_rotation(spot, here).yaw
+            return monsters.spawn_monster(cls, spot, yaw if facing_player else yaw + 180)
+
+        # A small monster in front of the player: animated (not in T-pose), health bar on screen, sees and chases.
+        health.set_health(100)
+        pc.set_control_rotation(pawn.get_actor_rotation())
+        m1 = spawn_at(small_class, 700)
+        if not m1:
+            record("monsters.spawn_one", False, "spawn blocked in front of the player")
+            return
+        yield from wait(0.6)
+        mesh = m1.get_editor_property("mesh")
+        span = (mesh.get_socket_location("LeftHand") - mesh.get_socket_location("RightHand")).length()
+        scale = mesh.get_world_scale().z
+        record("monsters.animated", span < 120 * scale, "hand span %.0f cm (T-pose ~%.0f)" % (span, 170 * scale))
+        record("monsters.health_bar_visible", m1.is_health_bar_visible(), "")
+        ai = m1.get_controller()
+        t = 0.0
+        while t < 4.0 and ai.get_target() != pawn:
+            t += (yield)
+        record("monsters.sees_player", ai.get_target() == pawn, "target %s after %.1fs" % (ai.get_target(), t))
+
+        # It runs to the player and hits: 5 per blow, never twice within the invulnerability time.
+        hits_seen = []
+        chased = {"seen": False}
+
+        def on_health(new_health, delta):
+            hits_seen.append((unreal.GameplayStatics.get_time_seconds(gw), delta))
+        health.on_health_changed.add_callable(on_health)
+        t = 0.0
+        while t < 8.0 and len(hits_seen) < 2:
+            t += (yield)
+            if t > 0.3 and str(ai.get_ai_state()).find("CHASE") >= 0:
+                chased["seen"] = True
+        health.on_health_changed.remove_callable(on_health)
+        gaps = [hits_seen[i + 1][0] - hits_seen[i][0] for i in range(len(hits_seen) - 1)]
+        record("monsters.chase_and_attack", chased["seen"] and len(hits_seen) >= 1 and all(abs(d + 5) < 1e-3 for _, d in hits_seen)
+               and all(g >= 0.5 for g in gaps),
+               "chased %s, hits %s, gaps %s" % (chased["seen"], [d for _, d in hits_seen], ["%.2f" % g for g in gaps]))
+        record("hud.player_health_bar", abs(hud_widget.get_health_display() - health.get_health_percent()) < 1e-3 and health.get_health() < 100,
+               "bar %.2f, health %.0f" % (hud_widget.get_health_display(), health.get_health()))
+        health.set_health(100)
+
+        # Hammer blows: 15 to a small one, reaction (stunned), 3 blows kill it: +20 points, counter, body removed later.
+        kills = {k: monsters.get_kill_count(k) for k in (unreal.MonsterKind.SMALL, unreal.MonsterKind.BIG)}
+        score0 = hud_score()
+        hit(m1, m1.get_actor_location(), 50.0)
+        yield from wait(0.1)
+        record("monsters.hammer_damage_small", abs(m1.get_health_component().get_health() - 30) < 1e-3 and m1.is_stunned(),
+               "health %.0f, stunned %s" % (m1.get_health_component().get_health(), m1.is_stunned()))
+        for _ in range(2):
+            yield from wait(0.2)
+            hit(m1, m1.get_actor_location(), 50.0)
+        yield from wait(0.3)
+        record("monsters.kill_small", m1.is_dead() and hud_score() - score0 == 20
+               and str(hud_widget.get_kills_display(unreal.MonsterKind.SMALL)) == "Petits monstres : %d" % (kills[unreal.MonsterKind.SMALL] + 1)
+               and not m1.is_health_bar_visible()
+               and m1.get_editor_property("capsule_component").get_collision_response_to_channel(unreal.CollisionChannel.ECC_PAWN) == unreal.CollisionResponseType.ECR_IGNORE,
+               "dead %s, +%d, %s" % (m1.is_dead(), hud_score() - score0, hud_widget.get_kills_display(unreal.MonsterKind.SMALL)))
+        death_length = m1.get_editor_property("death_anim").get_play_length()
+        life = m1.get_life_span()
+        record("monsters.body_removed_after_death", abs(life - (death_length + 2.0)) < 0.5, "life span %.1fs, death anim %.1fs + 2s" % (life, death_length))
+
+        # Big one: 10 per blow, 9 blows, +50 points.
+        m2 = spawn_at(big_class, 600, facing_player=False, side=300)
+        if not m2:
+            record("monsters.kill_big", False, "spawn blocked")
+        else:
+            yield from wait(0.6)
+            # Hunched mutant idle: the head top is ~147 cm high at scale 1, ~177 cm in the T-pose (broken blend space).
+            scale = m2.get_editor_property("mesh").get_world_scale().z
+            feet = m2.get_actor_location().z - m2.get_editor_property("capsule_component").get_scaled_capsule_half_height()
+            head = m2.get_editor_property("mesh").get_socket_location("HeadTop_End").z - feet
+            record("monsters.big_animated", head < 162 * scale, "head top %.0f cm above the feet (T-pose ~%.0f)" % (head, 177 * scale))
+            score0 = hud_score()
+            hit(m2, m2.get_actor_location(), 50.0)
+            first = m2.get_health_component().get_health()
+            for _ in range(8):
+                yield from wait(0.15)
+                hit(m2, m2.get_actor_location(), 50.0)
+            yield from wait(0.3)
+            record("monsters.kill_big", abs(first - 80) < 1e-3 and m2.is_dead() and hud_score() - score0 == 50
+                   and str(hud_widget.get_kills_display(unreal.MonsterKind.BIG)) == "Gros monstres : %d" % (kills[unreal.MonsterKind.BIG] + 1),
+                   "first blow -> %.0f, dead %s, +%d, %s" % (first, m2.is_dead(), hud_score() - score0, hud_widget.get_kills_display(unreal.MonsterKind.BIG)))
+
+        # Facing away: does not see the player.
+        m3 = spawn_at(small_class, 700, facing_player=False, side=-300)
+        if m3:
+            yield from wait(1.5)
+            record("monsters.blind_behind", m3.get_controller().get_target() is None, "target %s" % m3.get_controller().get_target())
+            hit(m3, m3.get_actor_location(), 50.0)
+            yield from wait(0.1)
+            record("monsters.hit_turns_on_player", m3.get_controller().get_target() == pawn, "target %s" % m3.get_controller().get_target())
+            m3.destroy_actor()
+
+        # Fallen in the water: climbs back out by the stairs (NavLink_WaterStairs) to reach the player.
+        acts = unreal.GameplayStatics.get_all_actors_of_class(gw, unreal.StaticMeshActor)
+        e1 = [a for a in acts if a.get_actor_label() == "Escape1"]
+        e2 = [a for a in acts if a.get_actor_label() == "Escape2"]
+        if e1 and e2:
+            a, b = e1[0].get_actor_location(), e2[0].get_actor_location()
+            d = b - a
+            d.z = 0
+            d = d.normal()
+            top = ground(a.x + d.x * 1100, a.y + d.y * 1100, 1000)
+            saved = (pawn.get_actor_location(), pawn.get_actor_rotation())
+            pawn.teleport(top + unreal.Vector(0, 0, 100), pawn.get_actor_rotation())
+            m4 = monsters.spawn_monster(small_class, ground(a.x - d.x * 500, a.y - d.y * 500, 400), 0.0)
+            yield from wait(0.2)
+            if m4:
+                m4.get_controller().set_target(pawn)
+                t = 0.0
+                while t < 20.0 and m4.get_actor_location().z < 800:
+                    t += (yield)
+                    health.set_health(100)
+                record("monsters.water_escape", m4.get_actor_location().z >= 800, "z %.0f after %.1fs" % (m4.get_actor_location().z, t))
+                m4.destroy_actor()
+            else:
+                record("monsters.water_escape", False, "spawn under water failed")
+            pawn.teleport(saved[0], saved[1])
+            health.set_health(100)
+        else:
+            record("monsters.water_escape", False, "Escape1/Escape2 not found")
+        monsters.destroy_all_monsters()
+        yield from wait(0.3)
 
     def scenario():
         # --- wait for PIE world and pawn
@@ -637,6 +883,9 @@ def _run_suite():
         record("settings.pause_key_toggles", opened and not hud.is_settings_visible() and not unreal.GameplayStatics.is_game_paused(gw),
                "opened %s, then menu %s paused %s" % (opened, hud.is_settings_visible(), unreal.GameplayStatics.is_game_paused(gw)))
 
+        # --- monsters
+        yield from monster_tests(gw, pawn, pc, hud_widget, hud_score, hit)
+
         # --- end of challenge: end screen with the score, player frozen
         score_before = str(hud_widget.get_score_display()) if hud_widget else ""
         game_state.set_remaining_time(0.5)
@@ -690,6 +939,24 @@ def _run_suite():
             for duration, best in saved_records.items():
                 records.set_best_score(duration, best if best > 0 else -1)
 
+        # --- player death: health 0 -> death animation -> end screen "Tu es mort !!", challenge over
+        if new_pawn:
+            hp2 = new_pawn.get_health_component()
+            hp2.set_health(3)
+            unreal.GameplayStatics.apply_damage(new_pawn, 5.0, None, None, None)
+            yield from wait(0.3)
+            dying = hp2.is_dead() and gs2.is_challenge_running()
+            t = 0.0
+            while t < 6.0 and not gs2.is_challenge_finished():
+                t += (yield)
+            yield from wait(0.3)
+            end2 = pc2.get_gregr_hud().get_end_screen_widget()
+            record("player.death_ends_challenge",
+                   dying and gs2.is_challenge_finished() and gs2.get_end_reason() == unreal.ChallengeEndReason.PLAYER_DIED
+                   and bool(end2) and pc2.get_gregr_hud().is_end_screen_visible() and str(end2.get_title_display()) == "Tu es mort !!"
+                   and end2.has_quit_button(),
+                   "dead during the animation %s, finished after %.1fs, title %s" % (dying, t, end2.get_title_display() if end2 else None))
+
         # --- quit (last: it ends the PIE session) from the pause menu
         if new_pawn:
             pc2.open_settings()
@@ -710,6 +977,7 @@ def _run_suite():
     def finish():
         unreal.unregister_slate_post_tick_callback(state["h"])
         les.editor_request_end_play()
+        unreal.SystemLibrary.execute_console_command(None, "gregr.Monsters 1")
         perf.set_editor_property("bThrottleCPUWhenNotForeground", throttle_was)
         user_settings.set_challenge_duration(saved_settings[0])
         user_settings.set_master_volume(saved_settings[1])

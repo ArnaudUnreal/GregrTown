@@ -52,19 +52,20 @@ void AGregrGameState::UpdateChallenge()
 
 	if (Remaining <= 0.f)
 	{
-		FinishChallenge();
+		FinishChallenge(EChallengeEndReason::TimeUp);
 	}
 }
 
-void AGregrGameState::FinishChallenge()
+void AGregrGameState::FinishChallenge(EChallengeEndReason Reason)
 {
-	if (bFinished)
+	if (bFinished || !bRunning)
 	{
 		return;
 	}
 
 	bRunning = false;
 	bFinished = true;
+	EndReason = Reason;
 	GetWorldTimerManager().ClearTimer(ChallengeTimer);
 
 	const UScoreSubsystem* Score = UWorld::GetSubsystem<UScoreSubsystem>(GetWorld());

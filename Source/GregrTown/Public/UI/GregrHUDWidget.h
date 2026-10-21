@@ -3,12 +3,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AI/GregrMonster.h"
 #include "UI/GregrUserWidget.h"
 #include "GregrHUDWidget.generated.h"
 
+class UProgressBar;
 class UTextBlock;
 
-/** In-game overlay: score and challenge countdown. */
+/** In-game overlay: score, monsters killed, player health and challenge countdown. */
 UCLASS()
 class GREGRTOWN_API UGregrHUDWidget : public UGregrUserWidget
 {
@@ -24,6 +26,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HUD")
 	FText GetScoreToBeatDisplay() const;
 
+	UFUNCTION(BlueprintPure, Category = "HUD")
+	FText GetKillsDisplay(EMonsterKind Kind) const;
+
+	/** "Vague 3 : 12 monstres" during a wave, "Vague 4 dans 15 s" during the countdown. */
+	UFUNCTION(BlueprintPure, Category = "HUD")
+	FText GetWaveDisplay() const;
+
+	/** Fill of the player health bar, in [0, 1]. */
+	UFUNCTION(BlueprintPure, Category = "HUD")
+	float GetHealthDisplay() const;
+
 	/** "1:05" style text for a number of seconds. */
 	static FText FormatTime(int32 Seconds);
 
@@ -31,6 +44,13 @@ protected:
 	virtual void BuildDefaultLayout() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+	UFUNCTION()
+	void HandleMonsterKilled(EMonsterKind Kind, int32 KillCount);
+
+	void SetKills(EMonsterKind Kind, int32 KillCount);
+	void UpdateWave();
 
 	UFUNCTION()
 	void HandleScoreChanged(int32 NewScore, int32 Delta, AActor* Source, AActor* Instigator, FVector Location);
@@ -64,6 +84,21 @@ protected:
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> TimerText;
+
+	/** Small monsters killed, under the score. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> SmallKillsText;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> BigKillsText;
+
+	/** Wave number and monsters left, or countdown to the next wave, under the timer. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UTextBlock> WaveText;
+
+	/** Player health, bottom left. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UProgressBar> HealthBar;
 
 	/** Best score for this challenge duration, top right. */
 	UPROPERTY(meta = (BindWidgetOptional))

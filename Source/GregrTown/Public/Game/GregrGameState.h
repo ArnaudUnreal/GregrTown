@@ -9,6 +9,13 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChallengeTimeChanged, int32, SecondsLeft);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChallengeFinished, int32, FinalScore);
 
+UENUM(BlueprintType)
+enum class EChallengeEndReason : uint8
+{
+	TimeUp,
+	PlayerDied
+};
+
 /** Timed challenge: break as much as possible before the countdown ends. */
 UCLASS()
 class GREGRTOWN_API AGregrGameState : public AGameStateBase
@@ -44,6 +51,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Challenge")
 	bool IsNewRecord() const { return bNewRecord; }
 
+	/** Ends the challenge now (score saved, end screen). The countdown calls it with TimeUp. */
+	UFUNCTION(BlueprintCallable, Category = "Challenge")
+	void FinishChallenge(EChallengeEndReason Reason);
+
+	UFUNCTION(BlueprintPure, Category = "Challenge")
+	EChallengeEndReason GetEndReason() const { return EndReason; }
+
 	/** Debug / tests: jump to the given remaining time. */
 	UFUNCTION(BlueprintCallable, Category = "Challenge|Debug")
 	void SetRemainingTime(float Seconds);
@@ -59,7 +73,6 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	void UpdateChallenge();
-	void FinishChallenge();
 
 	FTimerHandle ChallengeTimer;
 	double EndTime = 0.0;
@@ -67,6 +80,7 @@ protected:
 	bool bRunning = false;
 	bool bFinished = false;
 	bool bNewRecord = false;
+	EChallengeEndReason EndReason = EChallengeEndReason::TimeUp;
 	int32 ChallengeDuration = 0;
 	/** Record at the start of the challenge, so beating it during the game does not move the target. */
 	int32 ScoreToBeat = 0;

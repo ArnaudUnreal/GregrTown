@@ -8,7 +8,7 @@ public class GregrTown : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "DeveloperSettings", "GeometryCollectionEngine" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "DeveloperSettings", "GeometryCollectionEngine", "AIModule", "NavigationSystem", "GameplayTasks" });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "Chaos", "FieldSystemEngine", "Niagara", "UMG", "Slate", "SlateCore", "Landscape" });
 

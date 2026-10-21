@@ -1,0 +1,49 @@
+L'objectif de cette étape est l'ajout d'ennemis. ça implique :
+- le chara principal qui est un AIStimulusSource(Sight)
+- 2 ennemis différents, hérités d'une même classe possédant AISense (Sight), une progress bar au dessus de la tête de l'ennemi montre l'état de sa vie. 
+Quand il meurt, il disparait 2s après la fin de l'animation de mort.
+Quand il se prend un coup de marteau, il joue l'animation Standing_React_Large_From_Front
+	* SmallMonster dans Content/Mixamo/Chara/SmallMonster et ses animations dans Content/Mixamo/Anims/SmallMonster
+		. cause 5 points de dégâts par attaque, 45 PV max, walk speed=500, rapporte 20 points si tué
+	* BigMonster dans Content/Mixamo/Chara/BigMonster et ses animations dans Content/Mixamo/Anims/BigMonster
+		. cause 10 points de dégâts par attaque, 90 PV max, walk speed=250, rapporte 50 points si tué
+- le marteau cause 15 points de dégâts aux SmallMonsters et 10 aux BigMonsters (avec son et petit effet d'impact)
+- une gestion des points de vie du chara principal : 100 PV au maximum, une progress bar dans le HUD montre la santé du chara, quand la santé=0, lecture de l'anim Walking_To_Dying, fin de partie à la fin de l'anim, affichage de la widget de fin avec un message "Tu es mort !!" et les boutons habituels
+- il y a plus de SmallMonsters que de BigMonsters (rapport 4 pour 1)
+- le spawn des monstres se fait dans les maisons et dans le décor à une distance minimum de 10m autour du player start 
+- ceux dans les maisons ne peuvent sortir que si il y a un passage (porte ouverte ou cassée, murs cassés, etc) 
+- ceux qui spawnent dans l'eau peuvent remonter par un escalier que j'ai mis il y a quelques temps pour aider à faire remonter le chara
+- la gestion du spawn se fait selon le meilleur pattern design (pool ou autre)
+- ajouter sous l'affichage du score ingame le nombre de SmallMonsters et BigMonsters tués. 
+- si tu peux, scale les SmallMonsters à 0.7, qu'ils fassent en gros une tête de moins que BigMonster
+- on spawn entre 50 et 100 SmallMonsters, et on adapte le nombre de BigMonsters en fonction
+
+
+PRECISIONS :
+
+1. Pas d'animation d'idle pour les monstres: chaque monstre a 2 anims idle à choisir en random
+2. Les animations sont-elles « In Place » ? Oui
+
+Comportement de l'IA
+
+3. Quand un monstre ne voit pas le perso : il erre au hasard dans le level
+4. Marche ou course : le fichier ne donne que la vitesse de marche, alors que tu as fourni des animations de course. Par défaut : il marche quand il erre et court quand il te poursuit, à 1,6 fois sa vitesse de marche (800 pour le petit, 400 pour le gros): OK
+5. Vision et attaque : par défaut, vue à 15 m sur un angle de 90°, il te perd de vue au-delà de 20 m, attaque au contact (environ 1,5 m) toutes les 1,5 s: OK
+6. Le perso est-il protégé entre deux coups reçus ? Par défaut : 0,5 s d'invulnérabilité après un coup, pas de régénération de vie, pas d'animation de réaction sur le perso: Oui, pour ne pas se faire spammer de coups
+7. Coups de marteau sur un monstre : est-ce qu'un coup interrompt son attaque, avec un petit recul ? Par défaut : oui, l'animation de réaction annule son attaque en cours.: OK
+8. Les monstres cassent-ils le décor ? Par défaut : non.: Non
+
+Spawn
+
+9. Quand les monstres apparaissent : tous au début de la partie, ou en vagues pendant le chrono ? Et est-ce qu'ils réapparaissent après leur mort ? Ça change tout pour le choix du pattern : avec des réapparitions, un pool a du sens, sans réapparition c'est inutile. Par défaut : tout le monde au départ, sans réapparition, donc pas de pool, et des points de spawn calculés au lancement de la partie.: OK
+10. Combien de petits monstres, entre 50 et 100 : au hasard à chaque partie, ou réglé dans le menu (difficulté, durée du chrono) ? Par défaut : un réglage « Monstres » dans le menu, avec gros = petits / 4, soit 12 à 25 gros.: Non, random à chaque début de partie. D'ailleurs, plutôt entre 150 et 300
+11. Comment je reconnais une « maison » : je peux la détecter automatiquement (point au sol avec un toit au-dessus et des murs autour), ou tu places toi-même des points de spawn dans le niveau. Par défaut : détection automatique: le level ne va jamais changer, donc je vais poser des TargetPoints dans les maisons
+12. Les portes : y a-t-il des portes qui s'ouvrent pendant le jeu, ou seulement des maillages fixes (posés ouverts ou fermés) ? Ce point est important. Pour qu'un monstre sorte par un mur cassé, il faut que le navmesh se recalcule pendant la partie, et il n'y a aucun navmesh dans Asian_Village_Demo pour l'instant. Je l'ajouterai en mode dynamique, mais ça coûte un peu de CPU à chaque destruction: Pas de portes mobiles, et pas besoin de navmesh dynamique si les monstres sont naturellement bloqués par les murs. une navmesh est posée dans le niveau, à toi de la setup
+13. L'eau : est-ce un vrai volume d'eau où on nage, ou juste une surface où on marche au fond ? c'est un plane qui s'appelle Plane. Où est l'escalier ? Je peux le chercher, mais si tu as les coordonnées ou le nom de l'acteur, ça m'aide: Escape1 et Escape2 dans l'Outliner. Et veux-tu vraiment faire apparaître des monstres dans l'eau exprès, ou seulement les gérer s'ils y tombent ? Par défaut : je n'en fais pas apparaître dans l'eau, et un monstre qui tombe dedans remonte par l'escalier.: Oui, par défaut
+
+Score et fin de partie
+
+14. Les points gagnés en tuant un monstre (20 ou 50) s'ajoutent-ils au même score que la casse, avec record et score flottant ? Oui pour les 2 questions. Et un coup qui ne tue pas rapporte-t-il quelque chose ? Non 
+15. Après une mort, le score et le record sont-ils enregistrés comme à la fin du chrono ? oui.
+16. La barre de vie au-dessus des monstres : toujours visible, ou seulement après le premier coup ? Par défaut : seulement après le premier coup, ce qui évite d'afficher 100 barres à l'écran.: j'aimerai toujours visible, en screen space
+17. Le son et l'effet d'impact sur un monstre : je pioche dans Free_Sounds_Pack et Realistic_Starter_VFX_Pack_Vol2, ou tu as des assets précis en tête ? rien de précis, surprends moi
