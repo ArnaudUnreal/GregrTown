@@ -113,6 +113,45 @@ def _run_suite():
               if unreal.SystemLibrary.get_console_variable_int_value(cv) != 0]
         return not on, "enabled %s" % on
 
+    def t_no_vsm_overflow_text():
+        # The VSM overflow perf hint was drawn over the game HUD.
+        value = unreal.SystemLibrary.get_console_variable_int_value("r.Shadow.Virtual.AllowScreenOverflowMessages")
+        return value == 0, "r.Shadow.Virtual.AllowScreenOverflowMessages=%d" % value
+
+    def t_nanite_material_usage():
+        # Without "Used with Nanite" saved on the base material, Nanite GCs drew the default checker material.
+        # The editor sets the flag in memory on its own: also require the material package not to be dirty.
+        eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+        dirty = {p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()}
+        bases = set()
+        for a in eas.get_all_level_actors():
+            for c in a.get_components_by_class(unreal.StaticMeshComponent):
+                if c.static_mesh and c.static_mesh.get_editor_property("nanite_settings").enabled:
+                    bases.update(c.get_material(i).get_base_material() for i in range(c.get_num_materials()) if c.get_material(i))
+        bad = sorted({b.get_name() for b in bases if b.get_path_name().startswith("/Game/")
+                      and (not b.get_editor_property("used_with_nanite") or b.get_outermost().get_name() in dirty)})
+        return not bad, "%d base materials, missing or unsaved Nanite usage %s" % (len(bases), bad)
+
+    def t_gc_nanite():
+        # Hit objects are swapped for their Geometry Collection: non-Nanite GCs piled up during play
+        # and overflowed the virtual shadow map marking queue.
+        ar = unreal.AssetRegistryHelpers.get_asset_registry()
+        gcs = [a for a in ar.get_assets_by_class(unreal.TopLevelAssetPath("/Script/GeometryCollectionEngine", "GeometryCollection"))
+               if str(a.package_name).startswith("/Game/")]
+        solid = (unreal.BlendMode.BLEND_OPAQUE, unreal.BlendMode.BLEND_MASKED)
+        dirty = {p.get_name() for p in unreal.EditorLoadingAndSavingUtils.get_dirty_content_packages()}
+        missing, no_usage = [], set()
+        for a in gcs[::12]:  # sample, loading all of them is slow
+            gc = unreal.load_asset(str(a.package_name))
+            if all(m.get_blend_mode() in solid for m in gc.get_editor_property("materials") if m) and not gc.get_editor_property("enable_nanite"):
+                missing.append(gc.get_name())
+            for m in gc.get_editor_property("materials"):
+                b = m.get_base_material() if m else None
+                if b and gc.get_editor_property("enable_nanite") and b.get_path_name().startswith("/Game/") \
+                        and (not b.get_editor_property("used_with_nanite") or b.get_outermost().get_name() in dirty):
+                    no_usage.add(b.get_name())
+        return not missing and not no_usage, "checked %d, without Nanite %s, materials missing Nanite usage %s" % (len(gcs[::12]), missing, sorted(no_usage))
+
     def t_run_input():
         # Run lives in C++ (AGregrCharacter): BP_Ty must only set the input action, no run logic in its graph.
         bp = unreal.load_asset("/Game/GregrTown/Characters/Ty/BP_Ty")
@@ -142,7 +181,9 @@ def _run_suite():
 
     for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets),
                      ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
-                     ("asset.level_meshes_nanite", t_level_meshes_nanite)]:
+                     ("asset.level_meshes_nanite", t_level_meshes_nanite), ("asset.gc_nanite", t_gc_nanite),
+                     ("asset.nanite_material_usage", t_nanite_material_usage),
+                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
