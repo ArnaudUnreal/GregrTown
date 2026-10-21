@@ -5,8 +5,12 @@ Saved/
 DerivedDataCache/
 Build/
 
-# Content is not versioned
-Content/
+# Content is not versioned, except the input actions and mapping contexts
+Content/*
+!Content/Input/
+Content/Input/*
+!Content/Input/Actions/
+!Content/Input/IMC_*.uasset
 
 # Plugins are not versioned
 Plugins/
