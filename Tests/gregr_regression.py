@@ -109,7 +109,8 @@ def _run_suite():
 
     def t_render_features_off():
         # Hardware ray tracing (Lumen) hung the GPU on the 4060 Laptop: keep it and Substrate disabled.
-        on = [cv for cv in ["r.RayTracing", "r.Lumen.HardwareRayTracing", "r.Substrate"]
+        # Virtual shadow maps page-faulted the GPU at startup (Nanite shadow culling): regular shadow maps instead.
+        on = [cv for cv in ["r.RayTracing", "r.Lumen.HardwareRayTracing", "r.Substrate", "r.Shadow.Virtual.Enable"]
               if unreal.SystemLibrary.get_console_variable_int_value(cv) != 0]
         return not on, "enabled %s" % on
 
