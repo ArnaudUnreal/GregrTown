@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/SlateWrapperTypes.h"
 #include "GameFramework/HUD.h"
 #include "GregrHUD.generated.h"
 
@@ -20,7 +21,8 @@ class GREGRTOWN_API AGregrHUD : public AHUD
 public:
 	AGregrHUD();
 
-	void ShowSettings(bool bShow);
+	/** bStartMenu: before the challenge, the in-game overlay is hidden and the menu offers "Play" instead of "Resume". */
+	void ShowSettings(bool bShow, bool bStartMenu = false);
 	void ShowEndScreen(int32 FinalScore);
 
 	UFUNCTION(BlueprintPure, Category = "HUD")
@@ -83,6 +85,9 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UGregrHUDWidget> HUDWidget;
+
+	/** Restored when the start menu closes. */
+	ESlateVisibility HUDWidgetVisibility = ESlateVisibility::Visible;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UGregrSettingsWidget> SettingsWidget;

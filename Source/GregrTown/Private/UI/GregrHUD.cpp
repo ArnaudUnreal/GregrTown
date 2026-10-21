@@ -26,6 +26,7 @@ void AGregrHUD::BeginPlay()
 	if (APlayerController* PC = GetOwningPlayerController(); PC && HUDWidgetClass)
 	{
 		HUDWidget = CreateWidget<UGregrHUDWidget>(PC, HUDWidgetClass);
+		HUDWidgetVisibility = HUDWidget->GetVisibility();
 		HUDWidget->AddToViewport(0);
 	}
 
@@ -72,7 +73,7 @@ void AGregrHUD::HandleChallengeFinished(int32 FinalScore)
 	}
 }
 
-void AGregrHUD::ShowSettings(bool bShow)
+void AGregrHUD::ShowSettings(bool bShow, bool bStartMenu)
 {
 	AGregrPlayerController* PC = Cast<AGregrPlayerController>(GetOwningPlayerController());
 	if (bShow && !SettingsWidget && PC && SettingsWidgetClass)
@@ -80,6 +81,13 @@ void AGregrHUD::ShowSettings(bool bShow)
 		SettingsWidget = CreateWidget<UGregrSettingsWidget>(PC, SettingsWidgetClass);
 		SettingsWidget->OnResumeRequested.AddDynamic(PC, &AGregrPlayerController::CloseSettings);
 		SettingsWidget->OnRestartRequested.AddDynamic(PC, &AGregrPlayerController::RestartChallenge);
+		SettingsWidget->OnQuitRequested.AddDynamic(PC, &AGregrPlayerController::QuitToDesktop);
+	}
+
+	// Score and countdown mean nothing before the challenge starts.
+	if (HUDWidget)
+	{
+		HUDWidget->SetVisibility(bShow && bStartMenu ? ESlateVisibility::Collapsed : HUDWidgetVisibility);
 	}
 	if (!SettingsWidget)
 	{
@@ -88,6 +96,7 @@ void AGregrHUD::ShowSettings(bool bShow)
 
 	if (bShow)
 	{
+		SettingsWidget->SetStartMenu(bStartMenu);
 		SettingsWidget->RefreshFromSettings();
 		if (!SettingsWidget->IsInViewport())
 		{

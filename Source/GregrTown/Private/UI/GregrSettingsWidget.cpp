@@ -16,7 +16,7 @@
 
 void UGregrSettingsWidget::BuildDefaultLayout()
 {
-	UVerticalBox* Content = MakeModalPanel();
+	UVerticalBox* Content = MakeModalPanel(880.f);
 
 	AddRow(Content, MakeText(TEXT("Title"), LOCTEXT("Title", "Réglages"), 56), 36.f);
 
@@ -24,7 +24,8 @@ void UGregrSettingsWidget::BuildDefaultLayout()
 	AddRow(Content, DurationLabel, 8.f);
 	DurationSlider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass(), TEXT("DurationSlider"));
 	AddRow(Content, DurationSlider, 8.f, true);
-	AddRow(Content, MakeText(TEXT("DurationHint"), LOCTEXT("DurationHint", "(pour la prochaine partie)"), 18, false), 28.f);
+	DurationHint = MakeText(TEXT("DurationHint"), LOCTEXT("DurationHint", "(pour la prochaine partie)"), 18, false);
+	AddRow(Content, DurationHint, 28.f);
 
 	VolumeLabel = MakeText(TEXT("VolumeLabel"), FText::GetEmpty(), 30);
 	AddRow(Content, VolumeLabel, 8.f);
@@ -33,13 +34,40 @@ void UGregrSettingsWidget::BuildDefaultLayout()
 
 	UHorizontalBox* Buttons = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Buttons"));
 	ResumeButton = MakeButton(TEXT("ResumeButton"), LOCTEXT("Resume", "Continuer"));
+	ResumeButtonLabel = Cast<UTextBlock>(ResumeButton->GetChildAt(0));
 	RestartButton = MakeButton(TEXT("RestartButton"), LOCTEXT("Restart", "Rejouer"));
-	if (UHorizontalBoxSlot* ResumeSlot = Buttons->AddChildToHorizontalBox(ResumeButton))
+	QuitButton = MakeButton(TEXT("QuitButton"), LOCTEXT("Quit", "Quitter"));
+	for (UButton* Button : { ResumeButton.Get(), RestartButton.Get(), QuitButton.Get() })
 	{
-		ResumeSlot->SetPadding(FMargin(0.f, 0.f, 24.f, 0.f));
+		if (UHorizontalBoxSlot* ButtonSlot = Buttons->AddChildToHorizontalBox(Button))
+		{
+			ButtonSlot->SetPadding(FMargin(12.f, 0.f));
+		}
 	}
-	Buttons->AddChildToHorizontalBox(RestartButton);
 	AddRow(Content, Buttons, 0.f);
+}
+
+void UGregrSettingsWidget::SetStartMenu(bool bStartMenu)
+{
+	bIsStartMenu = bStartMenu;
+	if (ResumeButtonLabel)
+	{
+		ResumeButtonLabel->SetText(bStartMenu ? LOCTEXT("Play", "Jouer") : LOCTEXT("Resume", "Continuer"));
+	}
+	// Collapsed rather than hidden: the remaining buttons stay centered.
+	if (RestartButton)
+	{
+		RestartButton->SetVisibility(bStartMenu ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
+	}
+	if (DurationHint)
+	{
+		DurationHint->SetVisibility(bStartMenu ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+	}
+}
+
+FText UGregrSettingsWidget::GetResumeLabel() const
+{
+	return ResumeButtonLabel ? ResumeButtonLabel->GetText() : FText::GetEmpty();
 }
 
 void UGregrSettingsWidget::NativeConstruct()
@@ -69,6 +97,10 @@ void UGregrSettingsWidget::NativeConstruct()
 	if (RestartButton)
 	{
 		RestartButton->OnClicked.AddUniqueDynamic(this, &UGregrSettingsWidget::HandleRestartClicked);
+	}
+	if (QuitButton)
+	{
+		QuitButton->OnClicked.AddUniqueDynamic(this, &UGregrSettingsWidget::HandleQuitClicked);
 	}
 
 	RefreshFromSettings();
@@ -157,6 +189,11 @@ void UGregrSettingsWidget::HandleResumeClicked()
 void UGregrSettingsWidget::HandleRestartClicked()
 {
 	OnRestartRequested.Broadcast();
+}
+
+void UGregrSettingsWidget::HandleQuitClicked()
+{
+	OnQuitRequested.Broadcast();
 }
 
 #undef LOCTEXT_NAMESPACE

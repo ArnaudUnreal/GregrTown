@@ -3,9 +3,11 @@
 #include "Game/GregrPlayerController.h"
 
 #include "EnhancedInputComponent.h"
+#include "Game/GregrGameMode.h"
 #include "Game/GregrGameState.h"
 #include "Game/GregrGameUserSettings.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "UI/GregrHUD.h"
 
 void AGregrPlayerController::BeginPlay()
@@ -52,11 +54,27 @@ bool AGregrPlayerController::IsChallengeFinished() const
 	return GameState && GameState->IsChallengeFinished();
 }
 
+bool AGregrPlayerController::IsChallengeStarted() const
+{
+	const AGregrGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AGregrGameState>() : nullptr;
+	return GameState && (GameState->IsChallengeRunning() || GameState->IsChallengeFinished());
+}
+
+void AGregrPlayerController::OpenStartMenu()
+{
+	if (AGregrHUD* HUD = GetGregrHUD())
+	{
+		HUD->ShowSettings(true, true);
+	}
+	SetPause(true);
+	SetMenuInputMode(true);
+}
+
 void AGregrPlayerController::OpenSettings()
 {
 	if (AGregrHUD* HUD = GetGregrHUD())
 	{
-		HUD->ShowSettings(true);
+		HUD->ShowSettings(true, !IsChallengeStarted());
 	}
 	if (!IsChallengeFinished())
 	{
@@ -79,8 +97,13 @@ void AGregrPlayerController::CloseSettings()
 	// Back to the end screen if the challenge is over, back to the game otherwise.
 	if (!IsChallengeFinished())
 	{
+		const bool bStart = !IsChallengeStarted();
 		SetPause(false);
 		SetMenuInputMode(false);
+		if (AGregrGameMode* GameMode = bStart ? GetWorld()->GetAuthGameMode<AGregrGameMode>() : nullptr)
+		{
+			GameMode->StartChallenge();
+		}
 	}
 }
 
@@ -104,7 +127,16 @@ void AGregrPlayerController::RestartChallenge()
 		Settings->SaveSettings();
 	}
 	SetPause(false);
-	UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this, true)));
+	UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this, true)), true, AGregrGameMode::PlayNowOption);
+}
+
+void AGregrPlayerController::QuitToDesktop()
+{
+	if (UGregrGameUserSettings* Settings = UGregrGameUserSettings::GetGregrUserSettings())
+	{
+		Settings->SaveSettings();
+	}
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
 
 void AGregrPlayerController::HandleChallengeFinished(int32 FinalScore)

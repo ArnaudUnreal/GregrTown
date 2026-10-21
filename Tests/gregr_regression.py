@@ -113,6 +113,17 @@ def _run_suite():
               if unreal.SystemLibrary.get_console_variable_int_value(cv) != 0]
         return not on, "enabled %s" % on
 
+    def t_input_keys():
+        # The pause key mapping was lost while editing IMC_Default (adding Run): every action needs its keys.
+        imc = unreal.load_asset("/Game/Input/IMC_Default")
+        mapped = {}
+        for m in imc.get_editor_property("default_key_mappings").get_editor_property("mappings"):
+            if m.get_editor_property("action"):
+                mapped.setdefault(m.get_editor_property("action").get_name(), set()).add(str(m.get_editor_property("key").get_editor_property("key_name")))
+        expected = {"IA_Settings": {"P"}, "IA_Run": {"LeftShift"}, "IA_Jump": {"SpaceBar"}, "IA_Attack": {"LeftMouseButton"}, "IA_Move": {"Z", "Q", "S", "D"}}
+        missing = ["%s:%s" % (a, sorted(keys - mapped.get(a, set()))) for a, keys in expected.items() if not keys <= mapped.get(a, set())]
+        return not missing, "missing %s" % missing
+
     def t_no_vsm_overflow_text():
         # The VSM overflow perf hint was drawn over the game HUD.
         value = unreal.SystemLibrary.get_console_variable_int_value("r.Shadow.Virtual.AllowScreenOverflowMessages")
@@ -183,7 +194,7 @@ def _run_suite():
                      ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
                      ("asset.level_meshes_nanite", t_level_meshes_nanite), ("asset.gc_nanite", t_gc_nanite),
                      ("asset.nanite_material_usage", t_nanite_material_usage),
-                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text)]:
+                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text), ("asset.input_keys", t_input_keys)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
@@ -236,6 +247,27 @@ def _run_suite():
         move = pawn.get_movement_component()
         combat = pawn.get_combat_component()
         record("pie.start", True, pawn.get_class().get_name())
+
+        # --- start menu: the game opens on the settings, paused, countdown not started, overlay hidden
+        start_hud = pc.get_gregr_hud()
+        start_menu = start_hud.get_settings_widget() if start_hud else None
+        start_state = unreal.GameplayStatics.get_game_state(gw)
+        if not start_menu or not start_hud.is_settings_visible():
+            record("menu.start_shown", False, "no settings window at start")
+        else:
+            overlay = start_hud.get_hud_widget()
+            record("menu.start_shown",
+                   start_menu.is_start_menu() and str(start_menu.get_resume_label()) == "Jouer" and start_menu.has_quit_button()
+                   and unreal.GameplayStatics.is_game_paused(gw) and not start_state.is_challenge_running()
+                   and pc.get_editor_property("show_mouse_cursor") and overlay.get_visibility() == unreal.SlateVisibility.COLLAPSED,
+                   "label %s, quit %s, paused %s, running %s, overlay %s" % (start_menu.get_resume_label(), start_menu.has_quit_button(),
+                   unreal.GameplayStatics.is_game_paused(gw), start_state.is_challenge_running(), overlay.get_visibility()))
+            start_menu.click_resume()
+            yield from wait(0.3)
+            record("menu.play_starts", not start_hud.is_settings_visible() and not unreal.GameplayStatics.is_game_paused(gw)
+                   and start_state.is_challenge_running() and overlay.get_visibility() != unreal.SlateVisibility.COLLAPSED
+                   and abs(start_state.get_remaining_time() - user_settings.get_challenge_duration()) < 2,
+                   "running %s, %.1fs left, overlay %s" % (start_state.is_challenge_running(), start_state.get_remaining_time(), overlay.get_visibility()))
 
         attack_action = unreal.load_asset("/Game/Input/Actions/IA_Attack")
 
@@ -561,6 +593,22 @@ def _run_suite():
         record("settings.close_resumes", not hud.is_settings_visible() and not unreal.GameplayStatics.is_game_paused(gw)
                and not pc.get_editor_property("show_mouse_cursor"), "")
 
+        # --- pause key: the IA_Settings action opens the pause menu and closes it again (while paused)
+        settings_action = unreal.load_asset("/Game/Input/Actions/IA_Settings")
+
+        def press_settings():
+            for subsystem in unreal.ObjectIterator(unreal.EnhancedInputLocalPlayerSubsystem):
+                if not subsystem.get_path_name().startswith("/Script/"):
+                    subsystem.inject_input_vector_for_action(settings_action, unreal.Vector(1, 0, 0), [], [])
+
+        press_settings()
+        yield from wait(0.3)
+        opened = hud.is_settings_visible() and unreal.GameplayStatics.is_game_paused(gw)
+        press_settings()
+        yield from wait(0.3)
+        record("settings.pause_key_toggles", opened and not hud.is_settings_visible() and not unreal.GameplayStatics.is_game_paused(gw),
+               "opened %s, then menu %s paused %s" % (opened, hud.is_settings_visible(), unreal.GameplayStatics.is_game_paused(gw)))
+
         # --- end of challenge: end screen with the score, player frozen
         score_before = str(hud_widget.get_score_display()) if hud_widget else ""
         game_state.set_remaining_time(0.5)
@@ -600,6 +648,9 @@ def _run_suite():
             gs2 = unreal.GameplayStatics.get_game_state(gw2)
             ok = str(hud2.get_score_display()) == "Score : 0" and 85 <= gs2.get_remaining_time() <= 90 and gs2.is_challenge_running()
             record("challenge.restart", ok, "%s, %.1fs left" % (str(hud2.get_score_display()), gs2.get_remaining_time()))
+            # "Replay" goes straight into the game: no start menu.
+            record("menu.replay_skips_start", not pc2.get_gregr_hud().is_settings_visible() and not unreal.GameplayStatics.is_game_paused(gw2),
+                   "menu %s, paused %s" % (pc2.get_gregr_hud().is_settings_visible(), unreal.GameplayStatics.is_game_paused(gw2)))
             if records:
                 expected_to_beat = u"À battre : %d" % records.get_best_score(90)
                 record("record.per_duration", str(hud2.get_score_to_beat_display()) == expected_to_beat,
@@ -609,6 +660,20 @@ def _run_suite():
         if records:
             for duration, best in saved_records.items():
                 records.set_best_score(duration, best if best > 0 else -1)
+
+        # --- quit (last: it ends the PIE session) from the pause menu
+        if new_pawn:
+            pc2.open_settings()
+            yield from wait(0.2)
+            pause_menu = pc2.get_gregr_hud().get_settings_widget()
+            pause_label = str(pause_menu.get_resume_label()) if pause_menu else ""
+            if pause_menu:
+                pause_menu.click_quit()
+            t = 0.0
+            while ues.get_game_world() and t < 5.0:
+                t += (yield)
+            record("menu.quit_ends_game", pause_label == "Continuer" and not ues.get_game_world(),
+                   "pause menu label %s, game world after %.1fs: %s" % (pause_label, t, bool(ues.get_game_world())))
 
     gen = scenario()
     state = {"wait": 0.0, "started": False}
