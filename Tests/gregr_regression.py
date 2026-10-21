@@ -124,8 +124,25 @@ def _run_suite():
         leftovers = [s for s in (b"K2Node_EnhancedInputAction", b"JumpZVelocity", b"MaxWalkSpeed") if s in data]
         return action and action.get_name() == "IA_Run" and not leftovers, "action %s, BP leftovers %s" % (action, leftovers)
 
+    def t_level_meshes_nanite():
+        # Many non-Nanite meshes overflowed the virtual shadow map marking queue: opaque/masked level meshes use Nanite.
+        eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+        meshes = {c.static_mesh for a in eas.get_all_level_actors() for c in a.get_components_by_class(unreal.StaticMeshComponent)
+                  if c.static_mesh and c.static_mesh.get_path_name().startswith("/Game/")}
+        solid = (unreal.BlendMode.BLEND_OPAQUE, unreal.BlendMode.BLEND_MASKED)
+        missing = [m.get_name() for m in meshes
+                   if all(s.material_interface.get_blend_mode() in solid for s in m.static_materials if s.material_interface)
+                   and not m.get_editor_property("nanite_settings").enabled]
+        # Complex-as-simple collision is built from the Nanite fallback: a simplified fallback changes
+        # where blows land (fewer pieces broke) and what the player collides with.
+        coarse = [m.get_name() for m in meshes
+                  if m.get_editor_property("nanite_settings").enabled and m.get_editor_property("nanite_settings").fallback_relative_error > 0
+                  and m.get_editor_property("body_setup").get_editor_property("collision_trace_flag") == unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE]
+        return not missing and not coarse, "%d meshes, without Nanite %s, coarse collision %s" % (len(meshes), missing[:10], coarse[:10])
+
     for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets),
-                     ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input)]:
+                     ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
+                     ("asset.level_meshes_nanite", t_level_meshes_nanite)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
@@ -299,6 +316,8 @@ def _run_suite():
         boom = pawn.get_editor_property("camera_boom")
         frame = lambda: boom.get_editor_property("target_arm_length") * math.tan(math.radians(cam.field_of_view / 2))
         fov0, frame0 = cam.field_of_view, frame()
+        # Put the pawn back afterwards: the attack test approaches its wall from where the pawn stands.
+        start_location, start_rotation = pawn.get_actor_location(), pawn.get_actor_rotation()
         pawn.set_running(True)
         jump_run = move.get_editor_property("jump_z_velocity")
         speed, t = 0.0, 0.0
@@ -316,6 +335,8 @@ def _run_suite():
         after_attack = move.get_editor_property("max_walk_speed")
         pawn.set_running(False)
         yield from wait(1.5)
+        pawn.teleport(start_location, start_rotation)
+        yield from wait(0.5)
         record("move.run_speed", speed >= 950 and abs(after_attack - 1000) < 1 and attack_speed < 1000,
                "speed %.0f, max walk speed attacking %.0f then %.0f" % (speed, attack_speed, after_attack))
         record("move.run_jump", abs(jump_run - 1200) < 1 and abs(move.get_editor_property("jump_z_velocity") - 600) < 1
@@ -349,7 +370,9 @@ def _run_suite():
         else:
             o, _ = target[0].get_actor_bounds(False)
             loc = pawn.get_actor_location()
-            d = o - loc
+            # Approach from the PlayerStart side whatever the previous tests did with the pawn
+            # (the run test moves it 20 m away and breaks things on its way).
+            d = o - (starts[0].get_actor_location() if starts else loc)
             d.z = 0
             d = d.normal()
             spot = unreal.Vector(o.x - d.x * 190, o.y - d.y * 190, loc.z)
@@ -392,9 +415,14 @@ def _run_suite():
             yield from wait(1.5)
             record("hud.floating_scores_vanish", hud_widget.get_active_floating_score_count() == 0,
                    "%d still on screen" % hud_widget.get_active_floating_score_count())
+            # Pieces shrink away from ~2 s after breaking (remove-on-break timer 1..2.5 s): measuring at a fixed
+            # time races the shrink, wait up to 4 s after the blow instead.
+            since_blow = 2.8
+            while target[0].get_visible_piece_count() >= target_visible_start * 0.7 and since_blow < 4.0:
+                since_blow += (yield)
             visible_end = target[0].get_visible_piece_count()
             record("destruct.debris_removed", target_visible_start > 0 and visible_end < target_visible_start * 0.7,
-                   "visible pieces %d -> %d" % (target_visible_start, visible_end))
+                   "visible pieces %d -> %d, %.1f s after the blow" % (target_visible_start, visible_end, since_blow))
 
         # --- later hits: points only when they break more pieces
         def hud_score():
