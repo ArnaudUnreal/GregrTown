@@ -1,0 +1,26 @@
+# Unreal generated / local folders
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+Build/
+
+# Content is not versioned
+Content/
+
+# Plugins are not versioned
+Plugins/
+
+# IDE / solution files (regenerated from the .uproject)
+.vs/
+.idea/
+*.sln
+*.slnx
+*.suo
+*.sdf
+*.VC.db
+*.opensdf
+
+# Misc
+*.tmp
+*.log
