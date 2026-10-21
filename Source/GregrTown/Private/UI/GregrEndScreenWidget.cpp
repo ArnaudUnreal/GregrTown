@@ -13,7 +13,7 @@
 
 void UGregrEndScreenWidget::BuildDefaultLayout()
 {
-	UVerticalBox* Content = MakeModalPanel();
+	UVerticalBox* Content = MakeModalPanel(880.f);
 
 	AddRow(Content, MakeText(TEXT("Title"), LOCTEXT("Title", "Temps écoulé !"), 64), 24.f);
 	FinalScoreText = MakeText(TEXT("FinalScoreText"), FText::GetEmpty(), 52);
@@ -27,11 +27,14 @@ void UGregrEndScreenWidget::BuildDefaultLayout()
 	UHorizontalBox* Buttons = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass(), TEXT("Buttons"));
 	RestartButton = MakeButton(TEXT("RestartButton"), LOCTEXT("Restart", "Rejouer"));
 	SettingsButton = MakeButton(TEXT("SettingsButton"), LOCTEXT("Settings", "Réglages"));
-	if (UHorizontalBoxSlot* RestartSlot = Buttons->AddChildToHorizontalBox(RestartButton))
+	QuitButton = MakeButton(TEXT("QuitButton"), LOCTEXT("Quit", "Quitter"));
+	for (UButton* Button : { RestartButton.Get(), SettingsButton.Get(), QuitButton.Get() })
 	{
-		RestartSlot->SetPadding(FMargin(0.f, 0.f, 24.f, 0.f));
+		if (UHorizontalBoxSlot* ButtonSlot = Buttons->AddChildToHorizontalBox(Button))
+		{
+			ButtonSlot->SetPadding(FMargin(12.f, 0.f));
+		}
 	}
-	Buttons->AddChildToHorizontalBox(SettingsButton);
 	AddRow(Content, Buttons, 0.f);
 }
 
@@ -46,6 +49,10 @@ void UGregrEndScreenWidget::NativeConstruct()
 	if (SettingsButton)
 	{
 		SettingsButton->OnClicked.AddUniqueDynamic(this, &UGregrEndScreenWidget::HandleSettingsClicked);
+	}
+	if (QuitButton)
+	{
+		QuitButton->OnClicked.AddUniqueDynamic(this, &UGregrEndScreenWidget::HandleQuitClicked);
 	}
 }
 
@@ -83,6 +90,11 @@ void UGregrEndScreenWidget::HandleRestartClicked()
 void UGregrEndScreenWidget::HandleSettingsClicked()
 {
 	OnSettingsRequested.Broadcast();
+}
+
+void UGregrEndScreenWidget::HandleQuitClicked()
+{
+	OnQuitRequested.Broadcast();
 }
 
 #undef LOCTEXT_NAMESPACE

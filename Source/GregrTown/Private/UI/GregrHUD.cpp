@@ -117,6 +117,7 @@ void AGregrHUD::ShowEndScreen(int32 FinalScore)
 		EndScreenWidget = CreateWidget<UGregrEndScreenWidget>(PC, EndScreenWidgetClass);
 		EndScreenWidget->OnRestartRequested.AddDynamic(PC, &AGregrPlayerController::RestartChallenge);
 		EndScreenWidget->OnSettingsRequested.AddDynamic(PC, &AGregrPlayerController::OpenSettings);
+		EndScreenWidget->OnQuitRequested.AddDynamic(PC, &AGregrPlayerController::QuitToDesktop);
 	}
 	if (EndScreenWidget)
 	{

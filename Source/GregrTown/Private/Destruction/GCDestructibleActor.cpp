@@ -44,6 +44,9 @@ bool AGCDestructibleActor::SwapToGeometryCollection()
 	// Stays in place until hit: pieces become dynamic through the impact fields (and Collapse()).
 	Component->ObjectType = EObjectStateTypeEnum::Chaos_Object_Kinematic;
 	Component->bAllowRemovalOnBreak = true;
+	// Pieces do not block characters: debris pushed the player into floors and trapped it.
+	// The whole object collapses right after the hit (bCollapseOnHit), so nothing standing becomes walk-through for long.
+	Component->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
 	Component->SetNotifyBreaks(true);
 	Component->OnChaosBreakEvent.AddDynamic(this, &AGCDestructibleActor::HandleBreakEvent);
 	Component->SetRestCollection(GeometryCollection);

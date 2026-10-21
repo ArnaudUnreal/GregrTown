@@ -9,7 +9,7 @@
 class UButton;
 class UTextBlock;
 
-/** Shown when the countdown ends: final score, replay, settings. */
+/** Shown when the countdown ends: final score, replay, settings, quit. */
 UCLASS()
 class GREGRTOWN_API UGregrEndScreenWidget : public UGregrUserWidget
 {
@@ -34,6 +34,16 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "End Screen")
 	FOnGregrMenuAction OnSettingsRequested;
 
+	UPROPERTY(BlueprintAssignable, Category = "End Screen")
+	FOnGregrMenuAction OnQuitRequested;
+
+	UFUNCTION(BlueprintPure, Category = "End Screen")
+	bool HasQuitButton() const { return QuitButton != nullptr; }
+
+	/** Tests / gamepad helper: same as clicking "Quit". */
+	UFUNCTION(BlueprintCallable, Category = "End Screen")
+	void ClickQuit() { HandleQuitClicked(); }
+
 protected:
 	virtual void BuildDefaultLayout() override;
 	virtual void NativeConstruct() override;
@@ -43,6 +53,9 @@ protected:
 
 	UFUNCTION()
 	void HandleSettingsClicked();
+
+	UFUNCTION()
+	void HandleQuitClicked();
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UTextBlock> FinalScoreText;
@@ -55,4 +68,7 @@ protected:
 
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UButton> SettingsButton;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UButton> QuitButton;
 };

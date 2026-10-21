@@ -125,6 +125,14 @@ def _run_suite():
         missing = ["%s:%s" % (a, sorted(keys - mapped.get(a, set()))) for a, keys in expected.items() if not keys <= mapped.get(a, set())]
         return not missing, "missing %s" % missing
 
+    def t_french_culture():
+        # The packaged game formatted scores the English way ("13,736"): force and stage the French culture.
+        with open(os.path.join(unreal.Paths.project_config_dir(), "DefaultGame.ini"), encoding="utf-8") as f:
+            text = f.read()
+        need = ["[Internationalization]\nCulture=fr", "+CulturesToStage=fr", "InternationalizationPreset=EFIGS"]
+        missing = [n for n in need if n not in text]
+        return not missing, "missing %s" % missing
+
     def t_no_vsm_overflow_text():
         # The VSM overflow perf hint was drawn over the game HUD.
         value = unreal.SystemLibrary.get_console_variable_int_value("r.Shadow.Virtual.AllowScreenOverflowMessages")
@@ -195,7 +203,8 @@ def _run_suite():
                      ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
                      ("asset.level_meshes_nanite", t_level_meshes_nanite), ("asset.gc_nanite", t_gc_nanite),
                      ("asset.nanite_material_usage", t_nanite_material_usage),
-                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text), ("asset.input_keys", t_input_keys)]:
+                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text), ("asset.input_keys", t_input_keys),
+                     ("config.french_culture", t_french_culture)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
@@ -490,6 +499,10 @@ def _run_suite():
             record("combat.impact_notify", impacts["n"] == 1, "impacts %d" % impacts["n"])
             record("combat.attack_breaks", len(hits) >= 1, "hit %s" % hits)
             record("combat.attack_finished", not combat.is_attacking(), "")
+            # Debris does not block the player (it pushed the character into floor slabs).
+            gcc = target[0].get_components_by_class(unreal.GeometryCollectionComponent)
+            pawn_response = gcc[0].get_collision_response_to_channel(unreal.CollisionChannel.ECC_PAWN) if gcc else None
+            record("destruct.debris_ignores_player", pawn_response == unreal.CollisionResponseType.ECR_IGNORE, "response to Pawn: %s" % pawn_response)
             expected = sum(a.get_break_score() for a in hit_actors)
             shown = str(hud_widget.get_score_display()) if hud_widget else ""
             shown_value = int("".join(c for c in shown if c.isdigit()) or -1)  # ignores thousand separators
@@ -632,6 +645,7 @@ def _run_suite():
         record("challenge.finished", game_state.is_challenge_finished() and not game_state.is_challenge_running(), "")
         record("challenge.end_screen", bool(end_widget) and hud.is_end_screen_visible() and str(end_widget.get_score_display()) == score_before,
                "%s vs HUD %s" % (str(end_widget.get_score_display()) if end_widget else None, score_before))
+        record("menu.end_screen_has_quit", bool(end_widget) and end_widget.has_quit_button(), "")
         press_attack()
         yield from wait(0.3)
         record("challenge.player_frozen", not combat.is_attacking() and pc.get_editor_property("show_mouse_cursor"),
