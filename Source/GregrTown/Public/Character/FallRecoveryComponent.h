@@ -10,8 +10,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnFallRecovered, FVector, Recovered
 
 /**
  * Safety net for a character: remembers the last safe ground position and puts the character
- * back there if it ends up under the terrain or falls for too long (fell through the world,
- * pushed by debris, off the map...).
+ * back there if it ends up under the terrain, stuck inside geometry or falls for too long
+ * (fell through the world, pushed by debris, off the map...).
  */
 UCLASS(ClassGroup = (Gregr), meta = (BlueprintSpawnableComponent))
 class GREGRTOWN_API UFallRecoveryComponent : public UActorComponent
@@ -28,6 +28,14 @@ public:
 	/** Brought back when this far (cm) below the last safe position. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fall Recovery", meta = (ClampMin = "100"))
 	float MaxDropBelowSafe = 3000.f;
+
+	/** Seconds the capsule may stay inside blocking geometry (stuck in a floor...) before the character is brought back. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Fall Recovery", meta = (ClampMin = "0.1"))
+	float MaxStuckTime = 0.5f;
+
+	/** Debug / tests: true when the capsule overlaps blocking geometry. */
+	UFUNCTION(BlueprintPure, Category = "Fall Recovery")
+	bool IsInsideGeometry() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Fall Recovery")
 	void RecoverNow();
@@ -50,5 +58,6 @@ protected:
 
 	FVector LastSafeLocation = FVector::ZeroVector;
 	float FallingTime = 0.f;
+	float StuckTime = 0.f;
 	int32 RecoveryCount = 0;
 };

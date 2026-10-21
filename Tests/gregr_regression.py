@@ -436,6 +436,20 @@ def _run_suite():
             record("movement.recover_under_terrain", recovery.get_recovery_count() == count_before + 1 and abs(back.z - safe.z) < 150,
                    "recoveries %d -> %d, back at %.0f (safe %.0f)" % (count_before, recovery.get_recovery_count(), back.z, safe.z))
 
+        # --- stuck in a floor slab (packaged game: SM_floor_50, "is stuck and failed to move"): brought back
+        stuck_spot = unreal.Vector(18924.06, 6614.39, 1523.87)
+        count_before = recovery.get_recovery_count()
+        pawn.set_actor_location(stuck_spot, False, True)
+        yield from wait(0.05)
+        inside_at_start = recovery.is_inside_geometry()
+        t = 0.0
+        while t < 2.0 and recovery.get_recovery_count() == count_before:
+            t += (yield)
+        yield from wait(0.3)
+        record("movement.recover_stuck_in_floor",
+               inside_at_start and recovery.get_recovery_count() == count_before + 1 and not recovery.is_inside_geometry(),
+               "inside at start %s, recovered after %.1fs, inside now %s" % (inside_at_start, t, recovery.is_inside_geometry()))
+
         # --- attack: impact notify fires and breaks something in front of a wall
         target = [a for a in unreal.GameplayStatics.get_all_actors_of_class(gw, unreal.GCDestructibleActor)
                   if a.get_actor_label() == "SM_wall_window_20"]
