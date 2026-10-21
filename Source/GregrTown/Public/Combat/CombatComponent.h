@@ -52,6 +52,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool IsAttacking() const { return bAttacking; }
 
+	/** Sets the owner's walk speed outside attacks (during an attack, it is applied with AttackMoveSpeedMultiplier). */
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void SetBaseWalkSpeed(float Speed);
+
 	/** Called by AnimNotify_WeaponImpact. */
 	void HandleWeaponImpact();
 

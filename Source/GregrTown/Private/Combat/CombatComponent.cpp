@@ -130,6 +130,20 @@ void UCombatComponent::HandleWeaponImpact()
 	}
 }
 
+void UCombatComponent::SetBaseWalkSpeed(float Speed)
+{
+	ACharacter* Character = Cast<ACharacter>(GetOwner());
+	UCharacterMovementComponent* Movement = Character ? Character->GetCharacterMovement() : nullptr;
+	if (!Movement)
+	{
+		return;
+	}
+
+	// Restored by SetAttackMovement(false) when the current attack ends.
+	DefaultMaxWalkSpeed = Speed;
+	Movement->MaxWalkSpeed = bAttacking ? Speed * AttackMoveSpeedMultiplier : Speed;
+}
+
 void UCombatComponent::SetAttackMovement(bool bEnable)
 {
 	ACharacter* Character = Cast<ACharacter>(GetOwner());

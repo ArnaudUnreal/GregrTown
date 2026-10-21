@@ -113,8 +113,19 @@ def _run_suite():
               if unreal.SystemLibrary.get_console_variable_int_value(cv) != 0]
         return not on, "enabled %s" % on
 
+    def t_run_input():
+        # Run lives in C++ (AGregrCharacter): BP_Ty must only set the input action, no run logic in its graph.
+        bp = unreal.load_asset("/Game/GregrTown/Characters/Ty/BP_Ty")
+        action = unreal.get_default_object(bp.generated_class()).get_editor_property("run_action")
+        # Read the saved asset: nodes deleted in the editor stay findable in memory (undo buffer).
+        path = os.path.join(unreal.Paths.project_content_dir(), "GregrTown/Characters/Ty/BP_Ty.uasset")
+        with open(path, "rb") as f:
+            data = f.read()
+        leftovers = [s for s in (b"K2Node_EnhancedInputAction", b"JumpZVelocity", b"MaxWalkSpeed") if s in data]
+        return action and action.get_name() == "IA_Run" and not leftovers, "action %s, BP leftovers %s" % (action, leftovers)
+
     for name, fn in [("asset.gc_remove_on_break", t_gc_remove_on_break), ("asset.feedback_assets", t_feedback_assets),
-                     ("config.render_features_off", t_render_features_off)]:
+                     ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input)]:
         check(name, fn)
 
     for name, fn in [("asset.abp_compiles", t_abp_compiles), ("asset.blendspace_samples", t_blendspace),
@@ -281,6 +292,36 @@ def _run_suite():
         record("anim.jump_legs_tucked", tuck > -50, "foot-hips z %.1f (> -50)" % tuck)
         record("anim.fall_loop_no_jitter", jitter < 1.0, "max step %.2f cm" % jitter)
         yield from wait(0.5)
+
+        # --- run: faster, higher jumps, dolly zoom (wider FOV, shorter boom, same frame width at the character)
+        import math
+        cam = pawn.get_editor_property("follow_camera")
+        boom = pawn.get_editor_property("camera_boom")
+        frame = lambda: boom.get_editor_property("target_arm_length") * math.tan(math.radians(cam.field_of_view / 2))
+        fov0, frame0 = cam.field_of_view, frame()
+        pawn.set_running(True)
+        jump_run = move.get_editor_property("jump_z_velocity")
+        speed, t = 0.0, 0.0
+        fwd = pawn.get_actor_forward_vector()
+        while t < 2.0:
+            pawn.add_movement_input(fwd, 1.0, False)
+            t += (yield)
+            speed = max(speed, move.velocity.length())
+        fov_run, frame_run = cam.field_of_view, frame()
+        # Attacking while running slows down, the run speed must come back after the attack.
+        press_attack()
+        yield from wait(0.2)
+        attack_speed = move.get_editor_property("max_walk_speed")
+        yield from wait(2.0)
+        after_attack = move.get_editor_property("max_walk_speed")
+        pawn.set_running(False)
+        yield from wait(1.5)
+        record("move.run_speed", speed >= 950 and abs(after_attack - 1000) < 1 and attack_speed < 1000,
+               "speed %.0f, max walk speed attacking %.0f then %.0f" % (speed, attack_speed, after_attack))
+        record("move.run_jump", abs(jump_run - 1200) < 1 and abs(move.get_editor_property("jump_z_velocity") - 600) < 1
+               and abs(move.get_editor_property("max_walk_speed") - 500) < 1, "jump z run %.0f" % jump_run)
+        record("camera.run_dolly_zoom", fov_run > fov0 + 10 and abs(frame_run - frame0) < 1 and abs(cam.field_of_view - fov0) < 1,
+               "fov %.1f -> %.1f -> %.1f, frame %.1f -> %.1f" % (fov0, fov_run, cam.field_of_view, frame0, frame_run))
 
         # --- fall recovery: put under the terrain, the player must be brought back to safe ground
         recovery = pawn.get_fall_recovery_component()

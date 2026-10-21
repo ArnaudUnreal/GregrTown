@@ -29,13 +29,48 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Movement")
 	UFallRecoveryComponent* GetFallRecoveryComponent() const { return FallRecoveryComponent; }
 
+	/** Switches between walk and run speeds and jump velocities. */
+	UFUNCTION(BlueprintCallable, Category = "Movement")
+	void SetRunning(bool bRun);
+
+	UFUNCTION(BlueprintPure, Category = "Movement")
+	bool IsRunning() const { return bRunning; }
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	float WalkSpeed = 500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	float RunSpeed = 1000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	float WalkJumpZVelocity = 600.f;
+
+	/** Higher than walking: running jumps go higher and farther. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Movement")
+	float RunJumpZVelocity = 1200.f;
+
+	/** Camera FOV at full run speed. The camera boom gets shorter so the character keeps the same size on screen (dolly zoom). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "60", ClampMax = "150"))
+	float RunFieldOfView = 105.f;
+
+	/** How fast the camera follows the run effect. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (ClampMin = "0"))
+	float RunCameraInterpSpeed = 5.f;
+
 protected:
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 	virtual void NotifyControllerChanged() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
 	void Attack();
+	void StartRun() { SetRunning(true); }
+	void StopRun() { SetRunning(false); }
+
+	/** FOV and boom length for a run effect amount in [0, 1]. */
+	void UpdateRunCamera(float Alpha);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
@@ -67,4 +102,15 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputAction> AttackAction;
+
+	/** Held to run. */
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputAction> RunAction;
+
+	bool bRunning = false;
+
+	/** Camera values when walking, read at BeginPlay. */
+	float BaseFieldOfView = 90.f;
+	float BaseArmLength = 450.f;
+	float RunCameraAlpha = 0.f;
 };

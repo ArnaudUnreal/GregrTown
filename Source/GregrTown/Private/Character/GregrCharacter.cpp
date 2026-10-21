@@ -14,6 +14,8 @@
 
 AGregrCharacter::AGregrCharacter()
 {
+	PrimaryActorTick.bCanEverTick = true;
+
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
 
 	// Character turns towards movement, camera is free.
@@ -24,9 +26,9 @@ AGregrCharacter::AGregrCharacter()
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	Movement->bOrientRotationToMovement = true;
 	Movement->RotationRate = FRotator(0.f, 500.f, 0.f);
-	Movement->JumpZVelocity = 600.f;
+	Movement->JumpZVelocity = WalkJumpZVelocity;
 	Movement->AirControl = 0.35f;
-	Movement->MaxWalkSpeed = 500.f;
+	Movement->MaxWalkSpeed = WalkSpeed;
 	Movement->MinAnalogWalkSpeed = 20.f;
 	Movement->BrakingDecelerationWalking = 2000.f;
 
@@ -42,6 +44,54 @@ AGregrCharacter::AGregrCharacter()
 
 	CombatComponent = CreateDefaultSubobject<UCombatComponent>(TEXT("Combat"));
 	FallRecoveryComponent = CreateDefaultSubobject<UFallRecoveryComponent>(TEXT("FallRecovery"));
+}
+
+void AGregrCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	BaseFieldOfView = FollowCamera->FieldOfView;
+	BaseArmLength = CameraBoom->TargetArmLength;
+	SetRunning(false);
+}
+
+void AGregrCharacter::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+
+	// The run effect follows the actual horizontal speed, so it fades in while accelerating
+	// and stays on during a running jump.
+	const float SpeedRange = RunSpeed - WalkSpeed;
+	const float TargetAlpha = SpeedRange > 0.f ? FMath::Clamp((GetVelocity().Size2D() - WalkSpeed) / SpeedRange, 0.f, 1.f) : 0.f;
+	const float NewAlpha = FMath::FInterpTo(RunCameraAlpha, bRunning ? TargetAlpha : 0.f, DeltaSeconds, RunCameraInterpSpeed);
+	if (NewAlpha != RunCameraAlpha)
+	{
+		RunCameraAlpha = NewAlpha;
+		UpdateRunCamera(RunCameraAlpha);
+	}
+}
+
+void AGregrCharacter::SetRunning(bool bRun)
+{
+	bRunning = bRun;
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->JumpZVelocity = bRun ? RunJumpZVelocity : WalkJumpZVelocity;
+	// The combat component slows the character down during attacks: let it apply the new speed.
+	CombatComponent->SetBaseWalkSpeed(bRun ? RunSpeed : WalkSpeed);
+}
+
+void AGregrCharacter::UpdateRunCamera(float Alpha)
+{
+	const float FieldOfView = FMath::Lerp(BaseFieldOfView, RunFieldOfView, Alpha);
+	FollowCamera->SetFieldOfView(FieldOfView);
+
+	// Dolly zoom: keep the frame width at the character constant, ArmLength * tan(FOV / 2).
+	const float HalfFOVTan = FMath::Tan(FMath::DegreesToRadians(FieldOfView * 0.5f));
+	if (HalfFOVTan > UE_KINDA_SMALL_NUMBER)
+	{
+		CameraBoom->TargetArmLength = BaseArmLength * FMath::Tan(FMath::DegreesToRadians(BaseFieldOfView * 0.5f)) / HalfFOVTan;
+	}
 }
 
 void AGregrCharacter::NotifyControllerChanged()
@@ -93,6 +143,11 @@ void AGregrCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 	if (AttackAction)
 	{
 		Input->BindAction(AttackAction, ETriggerEvent::Started, this, &AGregrCharacter::Attack);
+	}
+	if (RunAction)
+	{
+		Input->BindAction(RunAction, ETriggerEvent::Started, this, &AGregrCharacter::StartRun);
+		Input->BindAction(RunAction, ETriggerEvent::Completed, this, &AGregrCharacter::StopRun);
 	}
 }
 
