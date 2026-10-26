@@ -13,7 +13,7 @@ UGregrGameUserSettings* UGregrGameUserSettings::GetGregrUserSettings()
 
 void UGregrGameUserSettings::SetChallengeDuration(float Seconds)
 {
-	ChallengeDuration = FMath::Clamp(Seconds, MinChallengeDuration, MaxChallengeDuration);
+	ChallengeDuration = FMath::Clamp(Seconds, MinChallengeDuration, UnlimitedChallengeDuration);
 }
 
 void UGregrGameUserSettings::SetMasterVolume(float Volume)

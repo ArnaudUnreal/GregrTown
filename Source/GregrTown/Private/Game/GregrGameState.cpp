@@ -14,8 +14,16 @@ void AGregrGameState::StartChallenge(float DurationSeconds)
 	bFinished = false;
 	bNewRecord = false;
 	LastBroadcastSeconds = -1;
-	ChallengeDuration = FMath::RoundToInt32(FMath::Max(DurationSeconds, 1.f));
+	bUnlimited = DurationSeconds <= 0.f;
+	ChallengeDuration = bUnlimited ? 0 : FMath::RoundToInt32(FMath::Max(DurationSeconds, 1.f));
 	RefreshScoreToBeat();
+	GetWorldTimerManager().ClearTimer(ChallengeTimer);
+	if (bUnlimited)
+	{
+		// No countdown: one broadcast so the HUD shows the challenge has started.
+		OnChallengeTimeChanged.Broadcast(0);
+		return;
+	}
 	// World time stops while the game is paused, so the countdown pauses too.
 	EndTime = GetWorld()->GetTimeSeconds() + FMath::Max(DurationSeconds, 1.f);
 	GetWorldTimerManager().SetTimer(ChallengeTimer, this, &AGregrGameState::UpdateChallenge, 0.1f, true);
@@ -24,7 +32,7 @@ void AGregrGameState::StartChallenge(float DurationSeconds)
 
 float AGregrGameState::GetRemainingTime() const
 {
-	if (!bRunning)
+	if (!bRunning || bUnlimited)
 	{
 		return 0.f;
 	}
@@ -33,7 +41,7 @@ float AGregrGameState::GetRemainingTime() const
 
 void AGregrGameState::SetRemainingTime(float Seconds)
 {
-	if (bRunning)
+	if (bRunning && !bUnlimited)
 	{
 		EndTime = GetWorld()->GetTimeSeconds() + FMath::Max(Seconds, 0.f);
 		UpdateChallenge();

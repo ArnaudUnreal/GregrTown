@@ -16,13 +16,14 @@ enum class EChallengeEndReason : uint8
 	PlayerDied
 };
 
-/** Timed challenge: break as much as possible before the countdown ends. */
+/** Timed challenge: break as much as possible before the countdown ends (or until death, without time limit). */
 UCLASS()
 class GREGRTOWN_API AGregrGameState : public AGameStateBase
 {
 	GENERATED_BODY()
 
 public:
+	/** DurationSeconds <= 0: no time limit, only the player's death ends the challenge. */
 	UFUNCTION(BlueprintCallable, Category = "Challenge")
 	void StartChallenge(float DurationSeconds);
 
@@ -35,7 +36,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Challenge")
 	bool IsChallengeFinished() const { return bFinished; }
 
-	/** Duration of the current challenge (seconds), the key of its record. */
+	UFUNCTION(BlueprintPure, Category = "Challenge")
+	bool IsChallengeUnlimited() const { return bUnlimited; }
+
+	/** Duration of the current challenge (seconds, 0 without time limit), the key of its record. */
 	UFUNCTION(BlueprintPure, Category = "Challenge")
 	int32 GetChallengeDuration() const { return ChallengeDuration; }
 
@@ -80,6 +84,7 @@ protected:
 	bool bRunning = false;
 	bool bFinished = false;
 	bool bNewRecord = false;
+	bool bUnlimited = false;
 	EChallengeEndReason EndReason = EChallengeEndReason::TimeUp;
 	int32 ChallengeDuration = 0;
 	/** Record at the start of the challenge, so beating it during the game does not move the target. */

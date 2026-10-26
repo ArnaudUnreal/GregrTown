@@ -8,6 +8,8 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Blueprint/WidgetTree.h"
+#include "Game/GregrPlayerController.h"
+#include "UI/GregrHUD.h"
 
 #define LOCTEXT_NAMESPACE "GregrEndScreen"
 
@@ -46,6 +48,10 @@ void UGregrEndScreenWidget::NativeConstruct()
 	if (RestartButton)
 	{
 		RestartButton->OnClicked.AddUniqueDynamic(this, &UGregrEndScreenWidget::HandleRestartClicked);
+		if (!GetDesiredFocusWidget())
+		{
+			SetDesiredFocusWidget(RestartButton);
+		}
 	}
 	if (SettingsButton)
 	{
@@ -55,6 +61,14 @@ void UGregrEndScreenWidget::NativeConstruct()
 	{
 		QuitButton->OnClicked.AddUniqueDynamic(this, &UGregrEndScreenWidget::HandleQuitClicked);
 	}
+}
+
+bool UGregrEndScreenWidget::WantsMenuFocus() const
+{
+	// The settings window opened from here is on top: it keeps the focus.
+	const AGregrPlayerController* PC = Cast<AGregrPlayerController>(GetOwningPlayer());
+	const AGregrHUD* HUD = PC ? PC->GetGregrHUD() : nullptr;
+	return !HUD || !HUD->IsSettingsVisible();
 }
 
 void UGregrEndScreenWidget::SetFinalScore(int32 Score)

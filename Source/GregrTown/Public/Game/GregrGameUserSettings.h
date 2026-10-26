@@ -18,13 +18,18 @@ class GREGRTOWN_API UGregrGameUserSettings : public UGameUserSettings
 public:
 	static constexpr float MinChallengeDuration = 30.f;
 	static constexpr float MaxChallengeDuration = 600.f;
+	/** Last notch of the duration slider, after MaxChallengeDuration: no time limit. */
+	static constexpr float UnlimitedChallengeDuration = MaxChallengeDuration + 30.f;
 
 	UFUNCTION(BlueprintPure, Category = "Settings", meta = (DisplayName = "Get Gregr User Settings"))
 	static UGregrGameUserSettings* GetGregrUserSettings();
 
-	/** Challenge length in seconds. */
+	/** Challenge length in seconds (UnlimitedChallengeDuration: no time limit). */
 	UFUNCTION(BlueprintPure, Category = "Settings")
 	float GetChallengeDuration() const { return ChallengeDuration; }
+
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	bool IsChallengeUnlimited() const { return ChallengeDuration >= UnlimitedChallengeDuration; }
 
 	UFUNCTION(BlueprintCallable, Category = "Settings")
 	void SetChallengeDuration(float Seconds);

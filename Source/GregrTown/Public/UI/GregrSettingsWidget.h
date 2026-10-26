@@ -61,9 +61,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Settings")
 	void SetVolumeFromUI(float Volume);
 
+	/** Tests: the controls and the duration text. */
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	USlider* GetDurationSlider() const { return DurationSlider; }
+
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	USlider* GetVolumeSlider() const { return VolumeSlider; }
+
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	FText GetDurationDisplay() const;
+
 protected:
 	virtual void BuildDefaultLayout() override;
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 	UFUNCTION()
 	void HandleDurationChanged(float Value);

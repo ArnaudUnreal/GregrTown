@@ -47,6 +47,8 @@ bool AGCDestructibleActor::SwapToGeometryCollection()
 	// Pieces do not block characters: debris pushed the player into floors and trapped it.
 	// The whole object collapses right after the hit (bCollapseOnHit), so nothing standing becomes walk-through for long.
 	Component->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	// Nor the camera: flying debris made the camera boom shrink and grow again while a big object collapsed.
+	Component->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	Component->SetNotifyBreaks(true);
 	Component->OnChaosBreakEvent.AddDynamic(this, &AGCDestructibleActor::HandleBreakEvent);
 	Component->SetRestCollection(GeometryCollection);

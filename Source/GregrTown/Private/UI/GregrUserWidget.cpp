@@ -9,6 +9,7 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/SizeBox.h"
+#include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -22,6 +23,64 @@ bool UGregrUserWidget::Initialize()
 		BuildDefaultLayout();
 	}
 	return bSuperInitialized;
+}
+
+void UGregrUserWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	UWidget* FocusTarget = GetDesiredFocusWidget();
+	APlayerController* PC = GetOwningPlayer();
+	if (!FocusTarget || !PC)
+	{
+		return;
+	}
+
+	// Gamepad navigation needs a focused widget: take it when the menu opens, and back after
+	// a click outside the buttons (the game viewport gets the focus then).
+	if (WantsMenuFocus() && !HasUserFocusedDescendants(PC))
+	{
+		FocusTarget->SetUserFocus(PC);
+	}
+	UpdateFocusHighlight(PC);
+}
+
+void UGregrUserWidget::UpdateFocusHighlight(APlayerController* PC)
+{
+	UWidget* Focused = nullptr;
+	WidgetTree->ForEachWidget([&Focused, PC](UWidget* Widget)
+	{
+		if (!Focused && (Widget->IsA<UButton>() || Widget->IsA<USlider>()) && Widget->HasUserFocus(PC))
+		{
+			Focused = Widget;
+		}
+	});
+	if (Focused != HighlightedWidget.Get())
+	{
+		SetHighlighted(HighlightedWidget.Get(), false);
+		SetHighlighted(Focused, true);
+		HighlightedWidget = Focused;
+	}
+}
+
+void UGregrUserWidget::SetHighlighted(UWidget* Widget, bool bHighlighted)
+{
+	if (UButton* Button = Cast<UButton>(Widget))
+	{
+		if (bHighlighted)
+		{
+			HighlightedColor = Button->GetBackgroundColor();
+		}
+		Button->SetBackgroundColor(bHighlighted ? FocusColor : HighlightedColor);
+	}
+	else if (USlider* Slider = Cast<USlider>(Widget))
+	{
+		if (bHighlighted)
+		{
+			HighlightedColor = Slider->GetSliderHandleColor();
+		}
+		Slider->SetSliderHandleColor(bHighlighted ? FocusColor : HighlightedColor);
+	}
 }
 
 UTextBlock* UGregrUserWidget::MakeText(FName Name, const FText& Text, int32 FontSize, bool bBold)

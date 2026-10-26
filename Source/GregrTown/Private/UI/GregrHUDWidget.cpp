@@ -299,8 +299,10 @@ void UGregrHUDWidget::HandleTimeChanged(int32 SecondsLeft)
 	UpdateScoreToBeat(CurrentScore);
 	if (TimerText)
 	{
-		TimerText->SetText(FormatTime(SecondsLeft));
-		TimerText->SetColorAndOpacity(FSlateColor(SecondsLeft <= HurrySeconds ? HurryColor : FLinearColor::White));
+		const AGregrGameState* GameState = GetWorld() ? GetWorld()->GetGameState<AGregrGameState>() : nullptr;
+		const bool bUnlimited = GameState && GameState->IsChallengeUnlimited();
+		TimerText->SetText(bUnlimited ? LOCTEXT("Unlimited", "∞") : FormatTime(SecondsLeft));
+		TimerText->SetColorAndOpacity(FSlateColor(!bUnlimited && SecondsLeft <= HurrySeconds ? HurryColor : FLinearColor::White));
 	}
 }
 

@@ -54,6 +54,7 @@ public:
 protected:
 	virtual void BuildDefaultLayout() override;
 	virtual void NativeConstruct() override;
+	virtual bool WantsMenuFocus() const override;
 
 	UFUNCTION()
 	void HandleRestartClicked();

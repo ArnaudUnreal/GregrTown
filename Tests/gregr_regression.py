@@ -133,6 +133,13 @@ def _run_suite():
         missing = [n for n in need if n not in text]
         return not missing, "missing %s" % missing
 
+    def t_interior_lights():
+        # House interiors were pitch dark: warm movable lights in every room (Lighting/InteriorLights).
+        eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+        lights = [a for a in eas.get_all_level_actors() if isinstance(a, unreal.PointLight) and a.get_actor_label().startswith("InteriorLight_")]
+        bad = [a.get_actor_label() for a in lights if a.light_component.mobility != unreal.ComponentMobility.MOVABLE or a.light_component.intensity <= 0]
+        return len(lights) >= 100 and not bad, "%d lights, bad %s" % (len(lights), bad[:5])
+
     def t_no_vsm_overflow_text():
         # The VSM overflow perf hint was drawn over the game HUD.
         value = unreal.SystemLibrary.get_console_variable_int_value("r.Shadow.Virtual.AllowScreenOverflowMessages")
@@ -252,7 +259,7 @@ def _run_suite():
                      ("config.render_features_off", t_render_features_off), ("asset.run_input", t_run_input),
                      ("asset.level_meshes_nanite", t_level_meshes_nanite), ("asset.gc_nanite", t_gc_nanite),
                      ("asset.nanite_material_usage", t_nanite_material_usage),
-                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text), ("asset.input_keys", t_input_keys),
+                     ("config.no_vsm_overflow_text", t_no_vsm_overflow_text), ("level.interior_lights", t_interior_lights), ("asset.input_keys", t_input_keys),
                      ("config.french_culture", t_french_culture)]:
         check(name, fn)
 
@@ -379,7 +386,16 @@ def _run_suite():
         t = 0.0
         while t < 4.0 and ai.get_target() != pawn:
             t += (yield)
-        record("monsters.sees_player", ai.get_target() == pawn, "target %s after %.1fs" % (ai.get_target(), t))
+        if ai.get_target() == pawn:
+            record("monsters.sees_player", True, "after %.1fs" % t)
+        else:
+            eye = m1.get_actor_location() + unreal.Vector(0, 0, 80)
+            los = unreal.SystemLibrary.line_trace_single(gw, eye, pawn.get_actor_location(), unreal.TraceTypeQuery.ECC_VISIBILITY, False, [m1],
+                                                         unreal.DrawDebugTrace.NONE, True)
+            blocker = los.to_tuple()[9].get_actor_label() if los and los.to_tuple()[0] and los.to_tuple()[9] else None
+            perceived = ai.get_ai_perception_component().get_currently_perceived_actors(None)
+            record("monsters.sees_player", False, "target %s after %.1fs, monster %s player %s, blocked by %s, perceived %s"
+                   % (ai.get_target(), t, m1.get_actor_location(), pawn.get_actor_location(), blocker, [a.get_name() for a in perceived]))
 
         # It runs to the player and hits: 5 per blow, never twice within the invulnerability time.
         hits_seen = []
@@ -749,6 +765,9 @@ def _run_suite():
             gcc = target[0].get_components_by_class(unreal.GeometryCollectionComponent)
             pawn_response = gcc[0].get_collision_response_to_channel(unreal.CollisionChannel.ECC_PAWN) if gcc else None
             record("destruct.debris_ignores_player", pawn_response == unreal.CollisionResponseType.ECR_IGNORE, "response to Pawn: %s" % pawn_response)
+            # Nor the camera boom (it moved back and forth while a big object collapsed).
+            camera_response = gcc[0].get_collision_response_to_channel(unreal.CollisionChannel.ECC_CAMERA) if gcc else None
+            record("destruct.debris_ignores_camera", camera_response == unreal.CollisionResponseType.ECR_IGNORE, "response to Camera: %s" % camera_response)
             expected = sum(a.get_break_score() for a in hit_actors)
             shown = str(hud_widget.get_score_display()) if hud_widget else ""
             shown_value = int("".join(c for c in shown if c.isdigit()) or -1)  # ignores thousand separators
@@ -855,6 +874,19 @@ def _run_suite():
         record("settings.open_pauses", bool(settings_widget) and hud.is_settings_visible() and paused and pc.get_editor_property("show_mouse_cursor"),
                "visible %s paused %s" % (hud.is_settings_visible() if hud else None, paused))
         if settings_widget:
+            # Gamepad: the menu takes the focus on its first button and highlights it; sliders move without a lock step.
+            highlighted = settings_widget.get_highlighted_widget()
+            sliders = [settings_widget.get_duration_slider(), settings_widget.get_volume_slider()]
+            record("menu.gamepad_focus", bool(highlighted) and highlighted.get_name() == "ResumeButton"
+                   and all(s and not s.get_editor_property("requires_controller_lock") for s in sliders),
+                   "highlighted %s, slider locks %s" % (highlighted.get_name() if highlighted else None,
+                   [s.get_editor_property("requires_controller_lock") if s else None for s in sliders]))
+            # Last notch of the duration slider: no time limit.
+            duration_slider = sliders[0]
+            settings_widget.set_duration_from_ui(duration_slider.get_editor_property("max_value") if duration_slider else 630)
+            label = str(settings_widget.get_duration_display())
+            record("settings.unlimited_notch", user_settings.is_challenge_unlimited() and label == u"Durée du défi : illimitée",
+                   "duration %.0f, label %s" % (user_settings.get_challenge_duration(), label))
             settings_widget.set_duration_from_ui(95)   # snaps to 90
             settings_widget.set_volume_from_ui(0.5)
             record("settings.values", user_settings.get_challenge_duration() == 90 and abs(user_settings.get_master_volume() - 0.5) < 1e-3,
@@ -939,6 +971,16 @@ def _run_suite():
             for duration, best in saved_records.items():
                 records.set_best_score(duration, best if best > 0 else -1)
 
+        # --- no time limit: no countdown, the timer shows infinity, only death ends the challenge
+        unlimited_record = records.get_best_score(0) if records else 0
+        if new_pawn:
+            gs2.start_challenge(0)
+            yield from wait(1.5)
+            timer = str(hud2.get_timer_display())
+            record("challenge.unlimited", gs2.is_challenge_unlimited() and gs2.is_challenge_running() and not gs2.is_challenge_finished()
+                   and gs2.get_challenge_duration() == 0 and timer == u"∞",
+                   "unlimited %s, running %s, timer %s" % (gs2.is_challenge_unlimited(), gs2.is_challenge_running(), timer))
+
         # --- player death: health 0 -> death animation -> end screen "Tu es mort !!", challenge over
         if new_pawn:
             hp2 = new_pawn.get_health_component()
@@ -956,6 +998,13 @@ def _run_suite():
                    and bool(end2) and pc2.get_gregr_hud().is_end_screen_visible() and str(end2.get_title_display()) == "Tu es mort !!"
                    and end2.has_quit_button(),
                    "dead during the animation %s, finished after %.1fs, title %s" % (dying, t, end2.get_title_display() if end2 else None))
+            # Gamepad: the end screen takes the focus on "Replay".
+            yield from wait(0.2)
+            end_focus = end2.get_highlighted_widget() if end2 else None
+            record("menu.end_screen_gamepad_focus", bool(end_focus) and end_focus.get_name() == "RestartButton",
+                   "highlighted %s" % (end_focus.get_name() if end_focus else None))
+            if records:
+                records.set_best_score(0, unlimited_record if unlimited_record > 0 else -1)
 
         # --- quit (last: it ends the PIE session) from the pause menu
         if new_pawn:

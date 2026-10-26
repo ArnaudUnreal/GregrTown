@@ -46,7 +46,8 @@ void AGregrGameMode::StartChallenge()
 	if (AGregrGameState* Challenge = GetGameState<AGregrGameState>())
 	{
 		const UGregrGameUserSettings* Settings = UGregrGameUserSettings::GetGregrUserSettings();
-		Challenge->StartChallenge(Settings ? Settings->GetChallengeDuration() : 120.f);
+		// 0: no time limit.
+		Challenge->StartChallenge(!Settings ? 120.f : Settings->IsChallengeUnlimited() ? 0.f : Settings->GetChallengeDuration());
 		Challenge->OnChallengeFinished.AddUniqueDynamic(this, &AGregrGameMode::HandleChallengeFinished);
 	}
 	if (CVarSpawnMonsters.GetValueOnGameThread())
