@@ -311,10 +311,10 @@ def _run_suite():
         health = pawn.get_health_component()
         record("monsters.none_when_disabled", len(monsters.get_monsters()) == 0, "%d monsters with gregr.Monsters 0" % len(monsters.get_monsters()))
 
-        # Waves: 10, 20, ... 100 small monsters (then 100 again), 1 big for 4 small.
+        # Waves: 20, 30, ... 110 small monsters (then 110 again), 1 big for 4 small.
         wave_settings = unreal.get_default_object(unreal.MonsterWaveSettings)
         sizes = [wave_settings.get_wave_size(n) for n in (1, 2, 10, 11, 30)]
-        record("monsters.wave_sizes", sizes == [(10, 3), (20, 5), (100, 25), (100, 25), (100, 25)], str(sizes))
+        record("monsters.wave_sizes", sizes == [(20, 5), (30, 8), (110, 28), (110, 28), (110, 28)], str(sizes))
 
         # The cycle: first wave after its delay, away from the player, out of the water; the countdown to the
         # next wave starts when its last monster dies. Short delays for the test (restored after).
@@ -333,8 +333,8 @@ def _run_suite():
         too_close = [m for m in mons if ((m.get_actor_location() - here) * unreal.Vector(1, 1, 0)).length() < 1000 - 200]
         in_water = [m for m in mons if m.get_actor_location().z < settings.get_editor_property("water_level")]
         wave_text = str(hud_widget.get_wave_display())
-        record("monsters.wave_1", monsters.get_current_wave() == 1 and small == 10 and big == 3 and not too_close and not in_water
-               and wave_text == "Vague 1 : 13 monstres",
+        record("monsters.wave_1", monsters.get_current_wave() == 1 and small == 20 and big == 5 and not too_close and not in_water
+               and wave_text == "Vague 1 : 25 monstres",
                "wave %d: %d small, %d big, %d in houses, %d too close, %d under water, HUD '%s'"
                % (monsters.get_current_wave(), small, big, monsters.get_house_spawn_count(), len(too_close), len(in_water), wave_text))
         for m in mons:
@@ -347,7 +347,7 @@ def _run_suite():
             t += (yield)
         record("monsters.next_wave_after_delay",
                countdown and countdown_text.startswith("Vague 2 dans") and monsters.get_current_wave() == 2
-               and monsters.get_monster_count(unreal.MonsterKind.SMALL) == 20 and 1.5 <= t + 0.3 <= 3.5,
+               and monsters.get_monster_count(unreal.MonsterKind.SMALL) == 30 and 1.5 <= t + 0.3 <= 3.5,
                "countdown %s '%s', wave %d with %d small after %.1fs"
                % (countdown, countdown_text, monsters.get_current_wave(), monsters.get_monster_count(unreal.MonsterKind.SMALL), t + 0.3))
         monsters.stop_waves()
@@ -370,6 +370,11 @@ def _run_suite():
             return monsters.spawn_monster(cls, spot, yaw if facing_player else yaw + 180)
 
         # A small monster in front of the player: animated (not in T-pose), health bar on screen, sees and chases.
+        # From the PlayerStart: the earlier tests leave the player in varying spots, once with a flower box in the way.
+        starts = unreal.GameplayStatics.get_all_actors_of_class(gw, unreal.PlayerStart)
+        if starts:
+            pawn.teleport(starts[0].get_actor_location(), starts[0].get_actor_rotation())
+            yield from wait(0.3)
         health.set_health(100)
         pc.set_control_rotation(pawn.get_actor_rotation())
         m1 = spawn_at(small_class, 700)
